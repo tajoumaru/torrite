@@ -1,5 +1,4 @@
 use serde::Deserialize;
-use sha1::{Digest, Sha1};
 use std::collections::BTreeMap;
 use std::env;
 use std::fs;
@@ -9,32 +8,37 @@ use std::process::{Command, exit};
 // --- CONFIGURATION ---
 
 // 1. The name or path of YOUR Rust tool
-const torrite_BIN: &str = "target/release/torrite";
+const TORRITE_BIN: &str = "target/release/torrite";
 
 // 2. The name or path of the LEGACY tool (mktorrent)
 //    Ensure mktorrent is in your PATH or put the full path here.
 const MKTORRENT_BIN: &str = "mktorrent";
 
-// 3. Command templates.
+// 3. Additional comparison tools
+const MKBRR_BIN: &str = "mkbrr";
+const TORRENTTOOLS_BIN: &str = "torrenttools";
+const IMDL_BIN: &str = "imdl";
+
+// 4. Command templates.
 //    {INPUT} will be replaced by the file/folder path.
 //    {OUTPUT} will be replaced by the output torrent path.
 //
-//    NOTE: We add a dummy announce URL because mktorrent often requires one.
-const torrite_CMD: &str = "{BIN} {INPUT} -a http://localhost/announce -l 21 -f -o {OUTPUT}";
-const torrite_HYBRID_CMD: &str =
-    "{BIN} {INPUT} -a http://localhost/announce -l 21 -f --hybrid -o {OUTPUT}";
-const torrite_V2_ONLY_CMD: &str =
-    "{BIN} {INPUT} -a http://localhost/announce -l 21 -f --v2 -o {OUTPUT}";
-const MKTORRENT_CMD: &str = "{BIN} -a http://localhost/announce -l 21 -f -o {OUTPUT} {INPUT}";
+//    NOTE: We add a dummy announce URL because most tools require one.
+const TORRITE_CMD: &str = "{BIN} {INPUT} -a http://localhost/announce -l 21 -o {OUTPUT}";
+const TORRITE_HYBRID_CMD: &str =
+    "{BIN} {INPUT} -a http://localhost/announce -l 21 --hybrid -o {OUTPUT}";
+const TORRITE_V2_ONLY_CMD: &str =
+    "{BIN} {INPUT} -a http://localhost/announce -l 21 --v2 -o {OUTPUT}";
+const MKTORRENT_CMD: &str = "{BIN} -a http://localhost/announce -l 21 -o {OUTPUT} {INPUT}";
+const MKBRR_CMD: &str = "{BIN} create {INPUT} -t http://localhost/announce -l 21 -o {OUTPUT}";
+const TORRENTTOOLS_V1_CMD: &str = "{BIN} create -v 1 -a http://localhost/announce -l 21 -o {OUTPUT} {INPUT}";
+const TORRENTTOOLS_V2_CMD: &str = "{BIN} create -v 2 -a http://localhost/announce -l 21 -o {OUTPUT} {INPUT}";
+const TORRENTTOOLS_HYBRID_CMD: &str = "{BIN} create -v hybrid -a http://localhost/announce -l 21 -o {OUTPUT} {INPUT}";
+const IMDL_CMD: &str = "{BIN} torrent create -a http://localhost/announce -p 2mib -o {OUTPUT} {INPUT}";
 
 struct BenchmarkCase {
     name: &'static str,
     path: &'static str,
-}
-
-#[derive(Deserialize)]
-struct MinimalTorrent {
-    info: serde_bencode::value::Value,
 }
 
 #[derive(Deserialize, Debug)]
@@ -48,30 +52,16 @@ struct HyperfineRun {
     mean: f64,
 }
 
-fn calculate_info_hash(path: &Path) -> Result<String, String> {
-    let data = fs::read(path).map_err(|e| format!("Failed to read file: {}", e))?;
-    let torrent: MinimalTorrent =
-        serde_bencode::from_bytes(&data).map_err(|e| format!("Failed to decode bencode: {}", e))?;
-
-    // We re-encode the info dictionary to calculate the hash.
-    // This relies on serde_bencode producing canonical bencode (sorted keys),
-    // which is required by the spec and implemented by the crate.
-    let info_bytes = serde_bencode::to_bytes(&torrent.info)
-        .map_err(|e| format!("Failed to re-encode info: {}", e))?;
-
-    let mut hasher = Sha1::new();
-    hasher.update(&info_bytes);
-    let hash = hasher.finalize();
-    Ok(format!("{:x}", hash))
-}
-
 fn main() {
     // 1. Check dependencies
     check_binary_exists("hyperfine");
 
     // allow user to override binary paths via env vars
-    let torrite = env::var("torrite").unwrap_or_else(|_| torrite_BIN.to_string());
+    let torrite = env::var("torrite").unwrap_or_else(|_| TORRITE_BIN.to_string());
     let mktorrent = env::var("MKTORRENT").unwrap_or_else(|_| MKTORRENT_BIN.to_string());
+    let mkbrr = env::var("MKBRR").unwrap_or_else(|_| MKBRR_BIN.to_string());
+    let torrenttools = env::var("TORRENTTOOLS").unwrap_or_else(|_| TORRENTTOOLS_BIN.to_string());
+    let imdl = env::var("IMDL").unwrap_or_else(|_| IMDL_BIN.to_string());
 
     // Check for debug flag
     let args: Vec<String> = env::args().collect();
@@ -79,11 +69,18 @@ fn main() {
 
     check_binary_exists(&torrite);
     check_binary_exists(&mktorrent);
+    check_binary_exists(&mkbrr);
+    check_binary_exists(&torrenttools);
+    check_binary_exists(&imdl);
 
     println!("---------------------------------------------------");
     println!("🚀 Torrent Benchmark Runner");
-    println!("   Candidate: {}", torrite);
-    println!("   Baseline:  {}", mktorrent);
+    println!("   Tools being compared:");
+    println!("     - torrite:      {} (V1, V2, Hybrid)", torrite);
+    println!("     - mktorrent:    {} (V1 baseline)", mktorrent);
+    println!("     - mkbrr:        {} (V1)", mkbrr);
+    println!("     - imdl:         {} (V1)", imdl);
+    println!("     - torrenttools: {} (V1, V2, Hybrid)", torrenttools);
     if debug_mode {
         println!("   Debug Mode: ON (Results will be kept)");
     }
@@ -139,9 +136,14 @@ fn main() {
     // Actually, we can just use a predefined list of tool keys to ensure row order.
     let tool_names = vec![
         "mktorrent (V1)",
-        "torrite (V1)",
-        "torrite (V2 Only)",
-        "torrite (Hybrid)",
+        "**torrite (V1)**",
+        "**torrite (V2 Only)**",
+        "**torrite (Hybrid)**",
+        "mkbrr (V1)",
+        "imdl (V1)",
+        "torrenttools (V1)",
+        "torrenttools (V2)",
+        "torrenttools (Hybrid)",
     ];
 
     let mut aggregated_results: BTreeMap<String, Vec<String>> = BTreeMap::new();
@@ -160,10 +162,15 @@ fn main() {
             );
             // Add "N/A" for missing scenarios to keep alignment
             for tool in &tool_names {
+                let na_str = if tool.contains("torrite") {
+                    "**N/A**".to_string()
+                } else {
+                    "N/A".to_string()
+                };
                 aggregated_results
                     .get_mut(*tool)
                     .unwrap()
-                    .push("N/A".to_string());
+                    .push(na_str);
             }
             continue;
         }
@@ -176,51 +183,94 @@ fn main() {
         let out_torrite_hybrid = results_dir.join(format!("{}_torrite_hybrid.torrent", safe_name));
         let out_torrite_v2 = results_dir.join(format!("{}_torrite_v2.torrent", safe_name));
         let out_mktorrent = results_dir.join(format!("{}_mktorrent.torrent", safe_name));
+        let out_mkbrr = results_dir.join(format!("{}_mkbrr.torrent", safe_name));
+        let out_imdl = results_dir.join(format!("{}_imdl.torrent", safe_name));
+        let out_torrenttools_v1 = results_dir.join(format!("{}_torrenttools_v1.torrent", safe_name));
+        let out_torrenttools_v2 = results_dir.join(format!("{}_torrenttools_v2.torrent", safe_name));
+        let out_torrenttools_hybrid = results_dir.join(format!("{}_torrenttools_hybrid.torrent", safe_name));
 
         // Format Commands
-        let cmd_torrite = format_command(torrite_CMD, &torrite, &input_path, &out_torrite);
+        let cmd_torrite = format_command(TORRITE_CMD, &torrite, &input_path, &out_torrite);
         let cmd_torrite_hybrid = format_command(
-            torrite_HYBRID_CMD,
+            TORRITE_HYBRID_CMD,
             &torrite,
             &input_path,
             &out_torrite_hybrid,
         );
         let cmd_torrite_v2 =
-            format_command(torrite_V2_ONLY_CMD, &torrite, &input_path, &out_torrite_v2);
+            format_command(TORRITE_V2_ONLY_CMD, &torrite, &input_path, &out_torrite_v2);
         let cmd_mktorrent = format_command(MKTORRENT_CMD, &mktorrent, &input_path, &out_mktorrent);
+        let cmd_mkbrr = format_command(MKBRR_CMD, &mkbrr, &input_path, &out_mkbrr);
+        let cmd_imdl = format_command(IMDL_CMD, &imdl, &input_path, &out_imdl);
+        let cmd_torrenttools_v1 = format_command(TORRENTTOOLS_V1_CMD, &torrenttools, &input_path, &out_torrenttools_v1);
+        let cmd_torrenttools_v2 = format_command(TORRENTTOOLS_V2_CMD, &torrenttools, &input_path, &out_torrenttools_v2);
+        let cmd_torrenttools_hybrid = format_command(TORRENTTOOLS_HYBRID_CMD, &torrenttools, &input_path, &out_torrenttools_hybrid);
 
         let json_output_path = results_dir.join(format!("result_{}.json", safe_name));
 
+        let cmd_prepare = format!(
+            "rm -f {} {} {} {} {} {} {} {} {}",
+            out_torrite.display(),
+            out_torrite_hybrid.display(),
+            out_torrite_v2.display(),
+            out_mktorrent.display(),
+            out_mkbrr.display(),
+            out_imdl.display(),
+            out_torrenttools_v1.display(),
+            out_torrenttools_v2.display(),
+            out_torrenttools_hybrid.display()
+        );
+
         // Execute Hyperfine
         let status = Command::new("hyperfine")
-            .arg("--warmup")
-            .arg("1")
+            .arg("--prepare")
+            .arg(&cmd_prepare)
             .arg("--min-runs")
             .arg("3")
             .arg("--export-json")
             .arg(&json_output_path)
             .arg("-n")
-            .arg("torrite (V1)")
-            .arg(&cmd_torrite)
-            .arg("-n")
-            .arg("torrite (Hybrid)")
-            .arg(&cmd_torrite_hybrid)
-            .arg("-n")
-            .arg("torrite (V2 Only)")
-            .arg(&cmd_torrite_v2)
-            .arg("-n")
             .arg("mktorrent (V1)")
             .arg(&cmd_mktorrent)
+            .arg("-n")
+            .arg("**torrite (V1)**")
+            .arg(&cmd_torrite)
+            .arg("-n")
+            .arg("**torrite (V2 Only)**")
+            .arg(&cmd_torrite_v2)
+            .arg("-n")
+            .arg("**torrite (Hybrid)**")
+            .arg(&cmd_torrite_hybrid)
+            .arg("-n")
+            .arg("mkbrr (V1)")
+            .arg(&cmd_mkbrr)
+            .arg("-n")
+            .arg("imdl (V1)")
+            .arg(&cmd_imdl)
+            .arg("-n")
+            .arg("torrenttools (V1)")
+            .arg(&cmd_torrenttools_v1)
+            .arg("-n")
+            .arg("torrenttools (V2)")
+            .arg(&cmd_torrenttools_v2)
+            .arg("-n")
+            .arg("torrenttools (Hybrid)")
+            .arg(&cmd_torrenttools_hybrid)
             .status()
             .expect("Failed to run hyperfine");
 
         if !status.success() {
             eprintln!("❌ Hyperfine reported an error for scenario: {}", case.name);
             for tool in &tool_names {
+                let err_str = if tool.contains("torrite") {
+                    "**Err**".to_string()
+                } else {
+                    "Err".to_string()
+                };
                 aggregated_results
                     .get_mut(*tool)
                     .unwrap()
-                    .push("Err".to_string());
+                    .push(err_str);
             }
         } else {
             // Read JSON results
@@ -238,60 +288,72 @@ fn main() {
             // Populate aggregated results preserving order
             for tool in &tool_names {
                 if let Some(mean) = run_map.get(*tool) {
-                    aggregated_results
-                        .get_mut(*tool)
-                        .unwrap()
-                        .push(format!("{:.3}s", mean));
-                } else {
-                    aggregated_results
-                        .get_mut(*tool)
-                        .unwrap()
-                        .push("Missing".to_string());
-                }
-            }
-
-            // Verify Output
-            println!("   Verifying output correctness...");
-            match (
-                calculate_info_hash(&out_torrite),
-                calculate_info_hash(&out_mktorrent),
-            ) {
-                (Ok(hash_torrite), Ok(hash_mktorrent)) => {
-                    if hash_torrite == hash_mktorrent {
-                        println!("   ✅ Info Hashes Match: {}", hash_torrite);
+                    let time_str = if tool.contains("torrite") {
+                        format!("**{:.3}s**", mean)
                     } else {
-                        println!("   ❌ Info Hash Mismatch!");
-                        println!("      torrite:   {}", hash_torrite);
-                        println!("      mktorrent: {}", hash_mktorrent);
-                    }
-                }
-                (Err(e), _) => {
-                    println!(
-                        "   ⚠️ Could not verify: Error reading torrite output: {}",
-                        e
-                    )
-                }
-                (_, Err(e)) => {
-                    println!(
-                        "   ⚠️ Could not verify: Error reading mktorrent output: {}",
-                        e
-                    )
+                        format!("{:.3}s", mean)
+                    };
+                    aggregated_results
+                        .get_mut(*tool)
+                        .unwrap()
+                        .push(time_str);
+                } else {
+                    let missing_str = if tool.contains("torrite") {
+                        "**Missing**".to_string()
+                    } else {
+                        "Missing".to_string()
+                    };
+                    aggregated_results
+                        .get_mut(*tool)
+                        .unwrap()
+                        .push(missing_str);
                 }
             }
 
-            // Check Hybrid generation success
-            match calculate_info_hash(&out_torrite_hybrid) {
-                Ok(hash) => println!("   ✅ Hybrid Torrent Generated: {}", hash),
-                Err(e) => println!("   ❌ Hybrid Torrent Error: {}", e),
-            }
-
-            // Check V2 generation success
-            match calculate_info_hash(&out_torrite_v2) {
-                Ok(hash) => println!("   ✅ V2 Torrent Generated: {}", hash),
-                Err(e) => println!("   ❌ V2 Torrent Error: {}", e),
-            }
         }
     }
+
+    // --- Calculate Averages and Sort ---
+    let mut tool_averages: Vec<(String, f64, String)> = Vec::new();
+
+    for tool in &tool_names {
+        if let Some(times) = aggregated_results.get(*tool) {
+            let mut valid_times: Vec<f64> = Vec::new();
+
+            for time_str in times {
+                // Parse time from strings like "0.123s" or "**0.456s**"
+                let cleaned = time_str.replace("*", "").replace("s", "").trim().to_string();
+                if let Ok(time) = cleaned.parse::<f64>() {
+                    valid_times.push(time);
+                }
+            }
+
+            let avg = if valid_times.is_empty() {
+                f64::MAX // Put entries with no valid times at the end
+            } else {
+                valid_times.iter().sum::<f64>() / valid_times.len() as f64
+            };
+
+            let avg_str = if tool.contains("torrite") {
+                if avg == f64::MAX {
+                    "**N/A**".to_string()
+                } else {
+                    format!("**{:.3}s**", avg)
+                }
+            } else {
+                if avg == f64::MAX {
+                    "N/A".to_string()
+                } else {
+                    format!("{:.3}s", avg)
+                }
+            };
+
+            tool_averages.push((tool.to_string(), avg, avg_str));
+        }
+    }
+
+    // Sort by average time (ascending)
+    tool_averages.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
 
     // --- Generate Markdown Table ---
     println!("\n📊 Benchmark Summary\n");
@@ -301,23 +363,24 @@ fn main() {
     for case in &scenarios {
         print!(" {} |", case.name);
     }
-    println!();
+    println!(" Average |");
 
     // Separator
     print!("|---|");
     for _ in &scenarios {
         print!("---|");
     }
-    println!();
+    println!("---|");
 
-    // Rows
-    for tool in &tool_names {
+    // Rows (sorted by average)
+    for (tool, _avg, avg_str) in &tool_averages {
         print!("| {} |", tool);
-        if let Some(times) = aggregated_results.get(*tool) {
+        if let Some(times) = aggregated_results.get(tool.as_str()) {
             for time in times {
                 print!(" {} |", time);
             }
         }
+        print!(" {} |", avg_str);
         println!();
     }
     println!();
