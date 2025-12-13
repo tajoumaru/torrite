@@ -1,7 +1,7 @@
-# *torrite* is a blazing-fast CLI-tool for creating BitTorrent metainfo files
+# *torrite* is a blazing-fast CLI-tool for creating BitTorrent v1 & v2 metainfo files, written in Rust
 
 <p align="center">
-  <img width="180" height="180" alt="torrite" src="https://github.com/user-attachments/assets/93de6d65-d63e-4808-a6b8-a807b4c7f4cf" />
+  <img width="180" height="180" alt="torrite" src="https://github.com/user-attachments/assets/d581dde1-a765-43b5-aa58-5ada34451ea9" />
 </p>
 
 Named after *ferrite* (iron oxide), keeping true to the metal-themed Rust naming tradition, which are also used to make magnets.
@@ -15,16 +15,19 @@ Named after *ferrite* (iron oxide), keeping true to the metal-themed Rust naming
 
 ## Performance
 
-| Tool | 1. Large ISO (5GB) | 2. Source Tree (Nested Tiny) | 3. User Docs (Mixed) | 4. Assets (Large Files) | 5. Edge Cases (Boundaries) | 6. Metadata Bomb (10k files) |
-|---|---|---|---|---|---|---|
-| **torrite (V1)** | **0.153s** | **0.025s** | **0.075s** | **0.186s** | **0.015s** | **0.076s** |
-| **torrite (V2 Only)** | **0.161s** | **0.024s** | **0.060s** | **0.194s** | **0.012s** | **0.067s** |
-| **torrite (Hybrid)** | **0.308s** | **0.109s** | **0.130s** | **0.370s** | **0.020s** | **0.264s**\* |
-| [mktorrent](https://github.com/pobrn/mktorrent) (V1) | 5.274s | 0.040s | 1.556s | 6.563s | 0.027s | 0.075s |
-> \* Hybrid mode is significantly slower on 10k empty files due to necessary padding file generation for each piece. (BEP 52 & BEP 47)
-
-*Benchmarks performed on AMD Ryzen 9 7950X3D, 32GB DDR5-6000 RAM, Gen4 NVMe SSD*\
-*Benchmark file generator can be found in `src/bin/generate_bench_data.rs`*
+| Tool | 1. Large ISO (5GB) | 2. Source Tree (Nested Tiny) | 3. User Docs (Mixed) | 4. Assets (Large Files) | 5. Edge Cases (Boundaries) | 6. Metadata Bomb (10k files) | Average&nbsp;↑ |
+|---|---|---|---|---|---|---|---|
+| **torrite (V2 Only)** | **0.162s** | **0.022s** | **0.060s** | **0.140s** | **0.011s** | **0.063s** | **0.076s** |
+| **torrite (V1)** | **0.149s** | **0.024s** | **0.076s** | **0.141s** | **0.015s** | **0.076s** | **0.080s** |
+| mkbrr (V1) | 0.173s | 0.145s | 0.142s | 0.159s | 0.012s | 0.237s | 0.145s |
+| **torrite (Hybrid)** | **0.304s** | **0.106s** | **0.131s** | **0.270s** | **0.020s** | **0.259s** | **0.182s** |
+| torrenttools (V1) | 0.684s | 0.354s | 0.543s | 0.880s | 0.333s | 0.636s | 0.572s |
+| imdl (V1) | 5.191s | 0.042s | 1.626s | 4.651s | 0.029s | 0.086s | 1.938s |
+| mktorrent (V1) | 5.303s | 0.039s | 1.661s | 4.776s | 0.029s | 0.078s | 1.981s |
+| torrenttools (V2) | 1.014s | 2.166s | 0.952s | 1.042s | 0.336s | 10.411s | 2.653s |
+| torrenttools (Hybrid) | 1.209s | 2.615s | 1.181s | 1.190s | 0.354s | 12.920s | 3.245s |
+> *Benchmarks performed on AMD Ryzen 9 7950X3D, 32GB DDR5-6000 RAM, Gen4 NVMe SSD*\
+> *Test file generator can be found in `src/bin/generate_bench_data.rs`*
 
 **Speed improvements over mktorrent:**
 - Large Single File (5GB) **34.5x faster**
