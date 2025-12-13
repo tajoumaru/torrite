@@ -1,4 +1,4 @@
-# *torrite* is a blazing-fast CLI-tool for creating BitTorrent metainfo files
+# *torrite* is a blazing-fast CLI-tool for creating BitTorrent metainfo files, written in Rust
 
 <p align="center">
   <img width="180" height="180" alt="torrite" src="https://github.com/user-attachments/assets/d581dde1-a765-43b5-aa58-5ada34451ea9" />
