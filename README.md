@@ -6,7 +6,7 @@ Named after *ferrite* (iron oxide), keeping true to the metal-themed Rust naming
 
 ## Features
 
-- **Full mktorrent compatibility** — All command-line flags from mktorrent are supported and work identically
+- **Full [mktorrent](https://github.com/pobrn/mktorrent) compatibility** — All command-line flags from mktorrent are supported and work identically
 - **BitTorrent v2 support** — Create modern v2-only or hybrid (v1+v2) torrents with `--v2` and `--hybrid` flags
 - **Blazing fast performance** — See benchmarks below for real-world speed comparisons
 - **Multi-threaded hashing** — Utilizes all CPU cores by default for maximum throughput
@@ -18,7 +18,7 @@ Named after *ferrite* (iron oxide), keeping true to the metal-themed Rust naming
 | **torrite (V1)** | **0.153s** | **0.025s** | **0.075s** | **0.186s** | **0.015s** | **0.076s** |
 | **torrite (V2 Only)** | **0.161s** | **0.024s** | **0.060s** | **0.194s** | **0.012s** | **0.067s** |
 | **torrite (Hybrid)** | **0.308s** | **0.109s** | **0.130s** | **0.370s** | **0.020s** | **0.264s**\* |
-| mktorrent (V1) | 5.274s | 0.040s | 1.556s | 6.563s | 0.027s | 0.075s |
+| [mktorrent](https://github.com/pobrn/mktorrent) (V1) | 5.274s | 0.040s | 1.556s | 6.563s | 0.027s | 0.075s |
 > \* Hybrid mode is significantly slower on 10k empty files due to necessary padding file generation for each piece. (BEP 52 & BEP 47)
 
 *Benchmarks performed on AMD Ryzen 9 7950X3D, 32GB DDR5-6000 RAM, Gen4 NVMe SSD*\
@@ -43,7 +43,7 @@ cargo install torrite
 ### From source
 
 ```bash
-git clone https://github.com/yourusername/torrite.git
+git clone https://github.com/tajoumaru/torrite.git
 cd torrite
 cargo build --release
 # Binary will be in target/release/torrite
