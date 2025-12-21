@@ -4,7 +4,7 @@
   <img width="180" height="180" alt="torrite" src="https://github.com/user-attachments/assets/d581dde1-a765-43b5-aa58-5ada34451ea9" />
 </p>
 
-Named after *ferrite* (iron oxide), keeping true to the metal-themed Rust naming tradition, which are also used to make magnets.
+Named after *ferrite* (iron oxide), keeping true to the metal-themed Rust naming tradition, which is also used to make magnets.
 
 ## Features
 
