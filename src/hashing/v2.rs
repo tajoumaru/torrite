@@ -246,3 +246,67 @@ pub fn compute_merkle_root(hashes: Vec<[u8; 32]>) -> ([u8; 32], Vec<Vec<[u8; 32]
     let root = layers.last().unwrap()[0];
     (root, layers)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sha2::{Digest, Sha256};
+
+    #[test]
+    fn test_compute_merkle_root() {
+        // Test 1: Empty
+        let (root, layers) = compute_merkle_root(vec![]);
+        let expected_empty = Sha256::digest(&[]);
+        let expected_root: [u8; 32] = expected_empty.into();
+        assert_eq!(root, expected_root);
+        assert_eq!(layers.len(), 1);
+
+        // Test 2: Single block
+        let h1 = [1u8; 32];
+        let (root, layers) = compute_merkle_root(vec![h1]);
+        assert_eq!(root, h1);
+        assert_eq!(layers.len(), 1);
+
+        // Test 3: Two blocks
+        let h1 = [1u8; 32];
+        let h2 = [2u8; 32];
+        let (root, layers) = compute_merkle_root(vec![h1, h2]);
+        
+        let mut hasher = Sha256::new();
+        hasher.update(h1);
+        hasher.update(h2);
+        let expected_root: [u8; 32] = hasher.finalize().into();
+        
+        assert_eq!(root, expected_root);
+        assert_eq!(layers.len(), 2);
+        assert_eq!(layers[0], vec![h1, h2]);
+        assert_eq!(layers[1], vec![expected_root]);
+
+        // Test 4: Three blocks (unbalanced)
+        // Layer 0: [h1, h2, h3]
+        // Layer 1: [H(h1+h2), h3]
+        // Layer 2: [H(H(h1+h2)+h3)]
+        let h3 = [3u8; 32];
+        let (root, layers) = compute_merkle_root(vec![h1, h2, h3]);
+        
+        assert_eq!(layers.len(), 3);
+        assert_eq!(layers[0].len(), 3);
+        assert_eq!(layers[1].len(), 2);
+        assert_eq!(layers[2].len(), 1);
+        
+        // Check Layer 1
+        let mut hasher = Sha256::new();
+        hasher.update(h1);
+        hasher.update(h2);
+        let h12: [u8; 32] = hasher.finalize().into();
+        assert_eq!(layers[1][0], h12);
+        assert_eq!(layers[1][1], h3);
+
+        // Check Root (Layer 2)
+        let mut hasher = Sha256::new();
+        hasher.update(h12);
+        hasher.update(h3);
+        let h123: [u8; 32] = hasher.finalize().into();
+        assert_eq!(root, h123);
+    }
+}

@@ -8,7 +8,7 @@
 //! ## Example
 //!
 //! ```no_run
-//! use mktorrent::{TorrentBuilder, TorrentOptions};
+//! use torrite::{TorrentBuilder, TorrentOptions};
 //! use std::path::PathBuf;
 //!
 //! let options = TorrentOptions::default();

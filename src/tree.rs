@@ -48,3 +48,58 @@ fn insert_recursive(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_insert_into_tree_single_file() {
+        let mut tree = BTreeMap::new();
+        let path = PathBuf::from("test_file.txt");
+        let root = vec![1, 2, 3];
+        insert_into_tree(&mut tree, &path, 100, root.clone());
+
+        assert_eq!(tree.len(), 1);
+        if let Some(Node::File(f)) = tree.get("test_file.txt") {
+            assert_eq!(f.metadata.length, 100);
+            assert_eq!(f.metadata.pieces_root.as_ref(), &root);
+        } else {
+            panic!("Expected file node");
+        }
+    }
+
+    #[test]
+    fn test_insert_into_tree_nested_file() {
+        let mut tree = BTreeMap::new();
+        let path = PathBuf::from("dir1/dir2/test_file.txt");
+        let root = vec![4, 5, 6];
+        insert_into_tree(&mut tree, &path, 200, root.clone());
+
+        assert_eq!(tree.len(), 1);
+        
+        // Check dir1
+        let dir1 = match tree.get("dir1") {
+            Some(Node::Directory(map)) => map,
+            _ => panic!("Expected directory dir1"),
+        };
+        assert_eq!(dir1.len(), 1);
+
+        // Check dir2
+        let dir2 = match dir1.get("dir2") {
+            Some(Node::Directory(map)) => map,
+            _ => panic!("Expected directory dir2"),
+        };
+        assert_eq!(dir2.len(), 1);
+
+        // Check file
+        let file = match dir2.get("test_file.txt") {
+            Some(Node::File(f)) => f,
+            _ => panic!("Expected file node"),
+        };
+
+        assert_eq!(file.metadata.length, 200);
+        assert_eq!(file.metadata.pieces_root.as_ref(), &root);
+    }
+}

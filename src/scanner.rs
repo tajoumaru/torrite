@@ -197,3 +197,56 @@ pub fn generate_cross_seed_id() -> String {
 
     format!("mktorrent-{}", hex_string)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_add_padding_files() {
+        let files = vec![
+            FileInfo {
+                path: PathBuf::from("a.txt"),
+                full_path: PathBuf::from("/a.txt"),
+                len: 100,
+                start_offset: 0,
+                is_padding: false,
+            },
+            FileInfo {
+                path: PathBuf::from("b.txt"),
+                full_path: PathBuf::from("/b.txt"),
+                len: 200,
+                start_offset: 0,
+                is_padding: false,
+            },
+        ];
+        let piece_length = 50;
+
+        // 100 % 50 == 0 -> No padding
+        // 200 % 50 == 0 -> No padding
+        let padded = add_padding_files(files.clone(), piece_length);
+        assert_eq!(padded.len(), 2);
+        assert_eq!(padded[0].len, 100);
+        assert_eq!(padded[1].len, 200);
+
+        let piece_length = 60;
+        // 100 % 60 = 40 -> Need 20 padding
+        // 200 (last file) -> No padding
+        let padded = add_padding_files(files.clone(), piece_length);
+        assert_eq!(padded.len(), 3);
+        
+        assert_eq!(padded[0].path.to_str().unwrap(), "a.txt");
+        assert_eq!(padded[0].len, 100);
+        
+        // Padding file
+        assert!(padded[1].is_padding);
+        assert_eq!(padded[1].len, 20);
+        assert!(padded[1].path.starts_with(".pad"));
+        
+        assert_eq!(padded[2].path.to_str().unwrap(), "b.txt");
+        assert_eq!(padded[2].len, 200);
+        // Offset check
+        assert_eq!(padded[1].start_offset, 100);
+        assert_eq!(padded[2].start_offset, 120);
+    }
+}

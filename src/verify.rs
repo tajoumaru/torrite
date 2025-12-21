@@ -291,3 +291,56 @@ fn find_v2_mismatches(expected: &BTreeMap<String, Node>, actual: &BTreeMap<Strin
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use torrite::models::{FileMetadata, FileNode};
+    use serde_bytes::ByteBuf;
+
+    #[test]
+    fn test_flatten_tree() {
+        let mut tree = BTreeMap::new();
+        // File 1: "a.txt"
+        tree.insert("a.txt".to_string(), Node::File(FileNode {
+            metadata: FileMetadata {
+                length: 100,
+                pieces_root: ByteBuf::new(),
+            }
+        }));
+        
+        // Directory: "b"
+        let mut sub_tree = BTreeMap::new();
+        // File 2: "b/c.txt"
+        sub_tree.insert("c.txt".to_string(), Node::File(FileNode {
+            metadata: FileMetadata {
+                length: 200,
+                pieces_root: ByteBuf::new(),
+            }
+        }));
+        tree.insert("b".to_string(), Node::Directory(sub_tree));
+
+        let mut files = Vec::new();
+        let mut offset = 0;
+        let base_path = Path::new("/base");
+
+        flatten_tree(&tree, &PathBuf::new(), base_path, &mut files, &mut offset);
+
+        assert_eq!(files.len(), 2);
+
+        // Files are iterated in BTreeMap order (key order). "a.txt" comes before "b".
+        let f1 = &files[0];
+        assert_eq!(f1.path.to_str().unwrap(), "a.txt");
+        assert_eq!(f1.full_path, base_path.join("a.txt"));
+        assert_eq!(f1.len, 100);
+        assert_eq!(f1.start_offset, 0);
+
+        let f2 = &files[1];
+        assert_eq!(f2.path.to_str().unwrap(), "b/c.txt");
+        assert_eq!(f2.full_path, base_path.join("b/c.txt"));
+        assert_eq!(f2.len, 200);
+        assert_eq!(f2.start_offset, 100);
+        
+        assert_eq!(offset, 300);
+    }
+}

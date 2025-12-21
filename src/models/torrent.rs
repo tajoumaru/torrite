@@ -224,3 +224,98 @@ impl Default for TorrentOptions {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::FileEntry;
+
+    #[test]
+    fn test_total_size_single_file() {
+        let info = Info {
+            piece_length: 1024,
+            pieces: None,
+            name: "test.iso".to_string(),
+            private: None,
+            files: None,
+            length: Some(12345),
+            source: None,
+            x_cross_seed: None,
+            meta_version: None,
+            file_tree: None,
+        };
+        let torrent = Torrent {
+            announce: None,
+            announce_list: None,
+            comment: None,
+            created_by: "test".to_string(),
+            creation_date: None,
+            info,
+            url_list: None,
+            piece_layers: None,
+        };
+        assert_eq!(torrent.total_size(), 12345);
+    }
+
+    #[test]
+    fn test_total_size_multi_file() {
+         let info = Info {
+            piece_length: 1024,
+            pieces: None,
+            name: "test_dir".to_string(),
+            private: None,
+            files: Some(vec![
+                FileEntry { length: 100, path: vec!["a.txt".into()], attr: None },
+                FileEntry { length: 200, path: vec!["b.txt".into()], attr: None },
+            ]),
+            length: None,
+            source: None,
+            x_cross_seed: None,
+            meta_version: None,
+            file_tree: None,
+        };
+        let torrent = Torrent {
+            announce: None,
+            announce_list: None,
+            comment: None,
+            created_by: "test".to_string(),
+            creation_date: None,
+            info,
+            url_list: None,
+            piece_layers: None,
+        };
+        assert_eq!(torrent.total_size(), 300);
+    }
+
+    #[test]
+    fn test_magnet_link() {
+        let info = Info {
+            piece_length: 0,
+            pieces: Some(serde_bytes::ByteBuf::from(vec![0; 20])), // Dummy pieces to allow hash
+            name: "test_file".to_string(),
+            private: None,
+            files: None,
+            length: Some(100),
+            source: None,
+            x_cross_seed: None,
+            meta_version: None,
+            file_tree: None,
+        };
+        let torrent = Torrent {
+            announce: Some("http://tracker.com/announce".to_string()),
+            announce_list: None,
+            comment: None,
+            created_by: "test".to_string(),
+            creation_date: None,
+            info,
+            url_list: None,
+            piece_layers: None,
+        };
+        
+        let magnet = torrent.magnet_link();
+        assert!(magnet.starts_with("magnet:?"));
+        assert!(magnet.contains("dn=test_file"));
+        assert!(magnet.contains("tr=http%3A%2F%2Ftracker.com%2Fannounce"));
+        assert!(magnet.contains("xt=urn:btih:"));
+    }
+}
