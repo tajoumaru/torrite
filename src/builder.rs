@@ -260,16 +260,34 @@ impl TorrentBuilder {
         // Build announce-list if multiple trackers are provided
         let (announce, announce_list) = if self.options.announce.is_empty() {
             (None, None)
-        } else if self.options.announce.len() == 1 {
-            (Some(self.options.announce[0].clone()), None)
         } else {
-            let list: Vec<Vec<String>> = self
-                .options
-                .announce
-                .iter()
-                .map(|url| vec![url.clone()])
-                .collect();
-            (Some(self.options.announce[0].clone()), Some(list))
+            let mut list: Vec<Vec<String>> = Vec::new();
+            for tier_str in &self.options.announce {
+                let tier: Vec<String> = tier_str
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+
+                if !tier.is_empty() {
+                    list.push(tier);
+                }
+            }
+
+            if list.is_empty() {
+                (None, None)
+            } else {
+                let first_announce = list[0][0].clone();
+
+                // If we have exactly one tier with one URL, we don't strictly need announce-list
+                let single_tracker = list.len() == 1 && list[0].len() == 1;
+
+                if single_tracker {
+                    (Some(first_announce), None)
+                } else {
+                    (Some(first_announce), Some(list))
+                }
+            }
         };
 
         // Get creation date

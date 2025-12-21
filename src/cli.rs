@@ -28,7 +28,7 @@ pub struct Args {
     pub no_date: bool,
 
     /// Exclude files matching pattern (glob) - can be comma-separated
-    #[arg(short = 'e', long = "exclude", value_name = "PATTERN")]
+    #[arg(short = 'e', long = "exclude", value_name = "PATTERN", value_delimiter = ',')]
     pub exclude: Vec<String>,
 
     /// Overwrite output file if it exists
@@ -64,7 +64,7 @@ pub struct Args {
     pub verbose: bool,
 
     /// Web seed URL(s) - can be specified multiple times
-    #[arg(short = 'w', long = "web-seed", value_name = "URL")]
+    #[arg(short = 'w', long = "web-seed", value_name = "URL", value_delimiter = ',')]
     pub web_seed: Vec<String>,
 
     /// Ensure info hash is unique for easier cross-seeding
