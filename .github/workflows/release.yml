@@ -39,10 +39,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install NASM (Windows)
-        if: matrix.platform.os-name == 'Windows-x86_64'
-        run: choco install nasm
-
       - name: Build binary
         uses: houseabsolute/actions-rust-cross@v1
         with:
