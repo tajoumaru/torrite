@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::PathBuf;
+use indicatif::ProgressBar;
 
 use crate::config::BLOCK_SIZE;
 use crate::models::{FileInfo, FileMetadata, FileNode, Node};
@@ -51,8 +52,9 @@ pub fn hash_v2_files(
     piece_length: u64,
     verbose: bool,
     is_single_file: bool,
+    pb: Option<ProgressBar>,
 ) -> Result<V2HashResult> {
-    if verbose {
+    if verbose && pb.is_none() {
         println!("  Computing V2 (SHA256) hashes and Merkle trees...");
     }
 
@@ -120,6 +122,10 @@ pub fn hash_v2_files(
                 let mut hasher = Sha256::new();
                 hasher.update(&buffer[..to_read]);
                 hashes.push(hasher.finalize().into());
+
+                if let Some(ref pb) = pb {
+                    pb.inc(to_read as u64);
+                }
 
                 remaining -= to_read as u64;
             }

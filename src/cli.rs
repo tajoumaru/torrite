@@ -1,16 +1,34 @@
-use clap::Parser;
+use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
 
 use crate::models::{Mode, TorrentOptions};
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(
-    name = "mktorrent",
+    name = "torrite",
     version = "2.0.0",
     about = "A CLI utility to create BitTorrent metainfo files",
     author = "torrite contributors"
 )]
-pub struct Args {
+pub struct Cli {
+    #[command(subcommand)]
+    pub command: Commands,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum Commands {
+    /// Create a new torrent (default)
+    Create(CreateArgs),
+
+    /// Verify local files against a torrent
+    Verify(VerifyArgs),
+
+    /// Edit an existing torrent's metadata
+    Edit(EditArgs),
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct CreateArgs {
     /// The file or directory to create a torrent from
     #[arg(value_name = "TARGET")]
     pub source: PathBuf,
@@ -47,6 +65,10 @@ pub struct Args {
     #[arg(short = 'o', long = "output", value_name = "FILE")]
     pub output: Option<PathBuf>,
 
+    /// Set the creation date (Unix timestamp)
+    #[arg(long = "date", value_name = "TIMESTAMP")]
+    pub date: Option<i64>,
+
     /// Set the private flag
     #[arg(short = 'p', long = "private")]
     pub private: bool,
@@ -71,6 +93,14 @@ pub struct Args {
     #[arg(short = 'x', long = "cross-seed")]
     pub cross_seed: bool,
 
+    /// Display the info hash of the created torrent
+    #[arg(long = "info-hash")]
+    pub info_hash: bool,
+
+    /// Output results in JSON format
+    #[arg(long = "json")]
+    pub json: bool,
+
     /// Create a v2-only torrent (no v1 compatibility)
     #[arg(long = "v2", conflicts_with = "hybrid")]
     pub v2: bool,
@@ -80,7 +110,49 @@ pub struct Args {
     pub hybrid: bool,
 }
 
-impl Args {
+#[derive(Args, Debug, Clone)]
+pub struct VerifyArgs {
+    /// The torrent file to verify against
+    #[arg(value_name = "TORRENT")]
+    pub torrent: PathBuf,
+
+    /// The path to the data directory or file (defaults to current directory)
+    #[arg(long = "path", value_name = "PATH")]
+    pub path: Option<PathBuf>,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct EditArgs {
+    /// The torrent file to edit
+    #[arg(value_name = "TORRENT")]
+    pub torrent: PathBuf,
+
+    /// Append announce URL(s)
+    #[arg(short = 'a', long = "announce", value_name = "URL")]
+    pub announce: Vec<String>,
+
+    /// Replace all announce URLs with this one
+    #[arg(long = "replace-announce", value_name = "URL", conflicts_with = "announce")]
+    pub replace_announce: Option<String>,
+
+    /// Set or update the comment
+    #[arg(short = 'c', long = "comment", value_name = "COMMENT")]
+    pub comment: Option<String>,
+
+    /// Set the private flag
+    #[arg(long = "private")]
+    pub private: bool,
+
+    /// Unset the private flag (make public)
+    #[arg(long = "public", conflicts_with = "private")]
+    pub public: bool,
+
+    /// Set the output file path (defaults to overwriting input)
+    #[arg(short = 'o', long = "output", value_name = "FILE")]
+    pub output: Option<PathBuf>,
+}
+
+impl CreateArgs {
     /// Convert CLI arguments to TorrentOptions
     pub fn into_options(self) -> TorrentOptions {
         let mode = if self.hybrid {
@@ -90,6 +162,12 @@ impl Args {
         } else {
             Mode::V1
         };
+
+        let creation_date = self.date.or_else(|| {
+            std::env::var("SOURCE_DATE_EPOCH")
+                .ok()
+                .and_then(|s| s.parse::<i64>().ok())
+        });
 
         TorrentOptions {
             mode,
@@ -101,6 +179,7 @@ impl Args {
             source_string: self.source_string,
             cross_seed: self.cross_seed,
             no_date: self.no_date,
+            creation_date,
             name: self.name,
             exclude: self.exclude,
         }

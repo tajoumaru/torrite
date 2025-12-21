@@ -1,6 +1,7 @@
 use anyhow::Result;
 use rayon::prelude::*;
 use sha1::{Digest, Sha1};
+use indicatif::ProgressBar;
 
 use crate::models::FileInfo;
 use super::io::read_piece_data;
@@ -10,8 +11,9 @@ pub fn hash_v1_pieces(
     files: &[FileInfo],
     piece_length: u64,
     verbose: bool,
+    pb: Option<ProgressBar>,
 ) -> Result<Vec<u8>> {
-    if verbose {
+    if verbose && pb.is_none() {
         println!("  Computing V1 (SHA1) hashes...");
     }
 
@@ -27,6 +29,11 @@ pub fn hash_v1_pieces(
             let mut hasher = Sha1::new();
             hasher.update(&data);
             let v1_hash = hasher.finalize();
+
+            if let Some(ref pb) = pb {
+                pb.inc(data.len() as u64);
+            }
+
             let mut v1_hash_arr = [0u8; 20];
             v1_hash_arr.copy_from_slice(&v1_hash);
             v1_hash_arr

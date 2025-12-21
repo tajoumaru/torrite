@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// Represents a file in the torrent
@@ -17,7 +17,7 @@ pub struct FileInfo {
 }
 
 /// File entry in multi-file mode
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct FileEntry {
     pub length: u64,
     pub path: Vec<String>,

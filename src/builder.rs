@@ -1,4 +1,5 @@
 use anyhow::Result;
+use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -13,6 +14,7 @@ pub struct TorrentBuilder {
     output_file: Option<PathBuf>,
     options: TorrentOptions,
     verbose: bool,
+    show_progress: bool,
     num_threads: usize,
 }
 
@@ -24,6 +26,7 @@ impl TorrentBuilder {
             output_file: None,
             options,
             verbose: false,
+            show_progress: false,
             num_threads: num_cpus::get(),
         }
     }
@@ -40,6 +43,12 @@ impl TorrentBuilder {
         self
     }
 
+    /// Enable progress bar
+    pub fn with_progress(mut self, progress: bool) -> Self {
+        self.show_progress = progress;
+        self
+    }
+
     /// Set the number of threads for hashing
     pub fn with_threads(mut self, threads: usize) -> Self {
         self.num_threads = threads;
@@ -49,14 +58,14 @@ impl TorrentBuilder {
     /// Build the torrent metadata
     pub fn build(self) -> Result<Torrent> {
         if self.verbose {
-            println!("mktorrent-rs 2.0.0");
-            println!();
+            eprintln!("mktorrent-rs 2.0.0");
+            eprintln!();
             self.print_configuration();
         }
 
         // Scan files
         if self.verbose {
-            println!("Scanning files...");
+            eprintln!("Scanning files...");
         }
 
         let (files, total_size) = scan_files(
@@ -78,25 +87,25 @@ impl TorrentBuilder {
             }
             let len = 1u64 << power;
             if self.verbose {
-                println!("Using piece length: {} bytes (2^{})", len, power);
+                eprintln!("Using piece length: {} bytes (2^{})", len, power);
             }
             len
         } else {
             let power = calculate_piece_length(total_size);
             let len = 1u64 << power;
             if self.verbose {
-                println!("Calculated piece length: {} bytes (2^{})", len, power);
+                eprintln!("Calculated piece length: {} bytes (2^{})", len, power);
             }
             len
         };
 
         let num_pieces = calculate_num_pieces(total_size, piece_length);
         if self.verbose {
-            println!("Total size: {} bytes", total_size);
-            println!("Number of pieces: {}", num_pieces);
-            println!();
-            println!("Using {} threads for hashing", self.num_threads);
-            println!("Mode: {:?}", self.options.mode);
+            eprintln!("Total size: {} bytes", total_size);
+            eprintln!("Number of pieces: {}", num_pieces);
+            eprintln!();
+            eprintln!("Using {} threads for hashing", self.num_threads);
+            eprintln!("Mode: {:?}", self.options.mode);
         }
 
         let is_single_file = self.source.is_file();
@@ -114,7 +123,7 @@ impl TorrentBuilder {
             self.hash_content(&files, piece_length, is_single_file)?;
 
         if self.verbose {
-            println!("Building torrent file...");
+            eprintln!("Building torrent file...");
         }
 
         // Build the torrent
@@ -143,9 +152,7 @@ impl TorrentBuilder {
         Option<std::collections::BTreeMap<serde_bytes::ByteBuf, serde_bytes::ByteBuf>>,
         Option<u8>,
     )> {
-        if self.verbose {
-            println!("Hashing content with {} threads...", self.num_threads);
-        }
+        let total_size: u64 = files.iter().map(|f| f.len).sum();
 
         // Create thread pool once and use it for all hashing
         let pool = rayon::ThreadPoolBuilder::new()
@@ -156,7 +163,24 @@ impl TorrentBuilder {
         pool.install(|| {
             // V1 HASHING
             let pieces_bytes = if self.options.mode != Mode::V2 {
-                hash_v1_pieces(files, piece_length, self.verbose)?
+                let pb = if self.show_progress {
+                    let pb = ProgressBar::new(total_size);
+                    pb.set_draw_target(ProgressDrawTarget::stderr_with_hz(10));
+                    pb.set_style(ProgressStyle::with_template(
+                        "{spinner:.green} [{elapsed_precise}] {bar:40.202/94} {bytes}/{total_bytes} ({eta}) {msg}"
+                    )?
+                    .progress_chars("█▓▒░"));
+                    pb.set_message("Hashing V1...");
+                    Some(pb)
+                } else {
+                    None
+                };
+
+                let res = hash_v1_pieces(files, piece_length, self.verbose, pb.clone())?;
+                if let Some(p) = pb {
+                    p.finish_with_message("V1 Hashing complete");
+                }
+                res
             } else {
                 Vec::new()
             };
@@ -164,12 +188,29 @@ impl TorrentBuilder {
             // V2 HASHING
             let (file_tree, piece_layers, meta_version) =
                 if self.options.mode == Mode::V2 || self.options.mode == Mode::Hybrid {
+                    let pb = if self.show_progress {
+                        let pb = ProgressBar::new(total_size);
+                        pb.set_draw_target(ProgressDrawTarget::stderr_with_hz(10));
+                        pb.set_style(ProgressStyle::with_template(
+                            "{spinner:.green} [{elapsed_precise}] {bar:40.202/94} {bytes}/{total_bytes} ({eta}) {msg}"
+                        )?
+                        .progress_chars("█▓▒░"));
+                        pb.set_message("Hashing V2...");
+                        Some(pb)
+                    } else {
+                        None
+                    };
+
                     let result = hash_v2_files(
                         files,
                         piece_length,
                         self.verbose,
                         is_single_file,
+                        pb.clone(),
                     )?;
+                    if let Some(p) = pb {
+                        p.finish_with_message("V2 Hashing complete");
+                    }
                     (Some(result.file_tree), Some(result.piece_layers), Some(2))
                 } else {
                     (None, None, None)
@@ -293,6 +334,8 @@ impl TorrentBuilder {
         // Get creation date
         let creation_date = if self.options.no_date {
             None
+        } else if let Some(timestamp) = self.options.creation_date {
+            Some(timestamp)
         } else {
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -320,31 +363,31 @@ impl TorrentBuilder {
     }
 
     fn print_configuration(&self) {
-        println!("Configuration:");
-        println!("  Source: {}", self.source.display());
+        eprintln!("Configuration:");
+        eprintln!("  Source: {}", self.source.display());
         if let Some(ref output) = self.output_file {
-            println!("  Output: {}", output.display());
+            eprintln!("  Output: {}", output.display());
         }
         if let Some(ref name) = self.options.name {
-            println!("  Name: {}", name);
+            eprintln!("  Name: {}", name);
         }
         if !self.options.announce.is_empty() {
-            println!("  Announce URLs:");
+            eprintln!("  Announce URLs:");
             for (i, url) in self.options.announce.iter().enumerate() {
-                println!("    {}: {}", i + 1, url);
+                eprintln!("    {}: {}", i + 1, url);
             }
         }
         if let Some(ref comment) = self.options.comment {
-            println!("  Comment: {}", comment);
+            eprintln!("  Comment: {}", comment);
         }
-        println!("  Private: {}", self.options.private);
-        println!("  No date: {}", self.options.no_date);
+        eprintln!("  Private: {}", self.options.private);
+        eprintln!("  No date: {}", self.options.no_date);
         if let Some(ref source) = self.options.source_string {
-            println!("  Source: {}", source);
+            eprintln!("  Source: {}", source);
         }
         if self.options.cross_seed {
-            println!("  Cross-seed: enabled");
+            eprintln!("  Cross-seed: enabled");
         }
-        println!();
+        eprintln!();
     }
 }

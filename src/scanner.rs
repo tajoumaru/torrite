@@ -49,7 +49,7 @@ pub fn scan_files(
         total_size = len;
 
         if verbose {
-            println!("Single file: {} ({} bytes)", source.display(), len);
+            eprintln!("Single file: {} ({} bytes)", source.display(), len);
         }
     } else {
         // Multi-file mode (directory)
@@ -70,7 +70,7 @@ pub fn scan_files(
             if let Some(ref output) = output_canonical {
                 if entry_path == output.as_path() {
                     if verbose {
-                        println!("Skipping output file: {}", entry_path.display());
+                        eprintln!("Skipping output file: {}", entry_path.display());
                     }
                     continue;
                 }
@@ -94,7 +94,7 @@ pub fn scan_files(
 
             if should_exclude {
                 if verbose {
-                    println!("Excluding: {}", entry_path.display());
+                    eprintln!("Excluding: {}", entry_path.display());
                 }
                 continue;
             }
@@ -115,12 +115,12 @@ pub fn scan_files(
             total_size += len;
 
             if verbose {
-                println!("  {} ({} bytes)", relative_path.display(), len);
+                eprintln!("  {} ({} bytes)", relative_path.display(), len);
             }
         }
 
         if verbose {
-            println!(
+            eprintln!(
                 "Found {} files, total size: {} bytes",
                 files.len(),
                 total_size

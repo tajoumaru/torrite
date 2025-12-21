@@ -8,6 +8,7 @@ Cargo.lock
 
 # Benchmarking data
 benchmark_data/
+testdata/
 benchmark_results/
 
 # IDE / Editor
