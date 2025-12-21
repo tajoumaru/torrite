@@ -3,9 +3,6 @@
 **/*.rs.bk
 *.pdb
 
-# Commited since torrite is mainly a binary
-Cargo.lock
-
 # Benchmarking data
 benchmark_data/
 testdata/
