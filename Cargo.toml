@@ -49,6 +49,11 @@ name = "run_benchmarks"
 path = "src/bin/run_benchmarks.rs"
 required-features = ["dev"]
 
+[dev-dependencies]
+assert_cmd = "2.0"
+predicates = "3.1"
+tempfile = "3.10"
+
 [profile.release]
 lto = true
 codegen-units = 1
