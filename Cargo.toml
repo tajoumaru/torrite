@@ -1,6 +1,6 @@
 [package]
 name = "torrite"
-version = "1.0.2"
+version = "1.0.3"
 edition = "2024"
 authors = ["tajoumaru"]
 description = "A CLI utility to create BitTorrent metainfo files written in Rust"
