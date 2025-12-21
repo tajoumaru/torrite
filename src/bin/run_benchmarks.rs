@@ -66,21 +66,26 @@ fn main() {
     // Check for debug flag
     let args: Vec<String> = env::args().collect();
     let debug_mode = args.contains(&"--debug".to_string());
+    let only_torrite = args.contains(&"--only-torrite".to_string());
 
     check_binary_exists(&torrite);
-    check_binary_exists(&mktorrent);
-    check_binary_exists(&mkbrr);
-    check_binary_exists(&torrenttools);
-    check_binary_exists(&imdl);
+    if !only_torrite {
+        check_binary_exists(&mktorrent);
+        check_binary_exists(&mkbrr);
+        check_binary_exists(&torrenttools);
+        check_binary_exists(&imdl);
+    }
 
     println!("---------------------------------------------------");
     println!("🚀 Torrent Benchmark Runner");
     println!("   Tools being compared:");
     println!("     - torrite:      {} (V1, V2, Hybrid)", torrite);
-    println!("     - mktorrent:    {} (V1 baseline)", mktorrent);
-    println!("     - mkbrr:        {} (V1)", mkbrr);
-    println!("     - imdl:         {} (V1)", imdl);
-    println!("     - torrenttools: {} (V1, V2, Hybrid)", torrenttools);
+    if !only_torrite {
+        println!("     - mktorrent:    {} (V1 baseline)", mktorrent);
+        println!("     - mkbrr:        {} (V1)", mkbrr);
+        println!("     - imdl:         {} (V1)", imdl);
+        println!("     - torrenttools: {} (V1, V2, Hybrid)", torrenttools);
+    }
     if debug_mode {
         println!("   Debug Mode: ON (Results will be kept)");
     }
@@ -131,20 +136,20 @@ fn main() {
     fs::create_dir_all(results_dir).expect("Failed to create results dir");
 
     // Store results: Tool Name -> Vec<Mean Time String>
-    // We use BTreeMap to keep keys sorted, but we might want specific order.
-    // Let's use a wrapper or just manage insertion order.
-    // Actually, we can just use a predefined list of tool keys to ensure row order.
-    let tool_names = vec![
-        "mktorrent (V1)",
+    let mut tool_names = vec![
         "**torrite (V1)**",
         "**torrite (V2 Only)**",
         "**torrite (Hybrid)**",
-        "mkbrr (V1)",
-        "imdl (V1)",
-        "torrenttools (V1)",
-        "torrenttools (V2)",
-        "torrenttools (Hybrid)",
     ];
+
+    if !only_torrite {
+        tool_names.insert(0, "mktorrent (V1)");
+        tool_names.push("mkbrr (V1)");
+        tool_names.push("imdl (V1)");
+        tool_names.push("torrenttools (V1)");
+        tool_names.push("torrenttools (V2)");
+        tool_names.push("torrenttools (Hybrid)");
+    }
 
     let mut aggregated_results: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for tool in &tool_names {
@@ -222,16 +227,20 @@ fn main() {
         );
 
         // Execute Hyperfine
-        let status = Command::new("hyperfine")
+        let mut hyperfine_cmd = Command::new("hyperfine");
+        hyperfine_cmd
             .arg("--prepare")
             .arg(&cmd_prepare)
             .arg("--min-runs")
             .arg("3")
             .arg("--export-json")
-            .arg(&json_output_path)
-            .arg("-n")
-            .arg("mktorrent (V1)")
-            .arg(&cmd_mktorrent)
+            .arg(&json_output_path);
+        
+        if !only_torrite {
+            hyperfine_cmd.arg("-n").arg("mktorrent (V1)").arg(&cmd_mktorrent);
+        }
+            
+        hyperfine_cmd
             .arg("-n")
             .arg("**torrite (V1)**")
             .arg(&cmd_torrite)
@@ -240,24 +249,17 @@ fn main() {
             .arg(&cmd_torrite_v2)
             .arg("-n")
             .arg("**torrite (Hybrid)**")
-            .arg(&cmd_torrite_hybrid)
-            .arg("-n")
-            .arg("mkbrr (V1)")
-            .arg(&cmd_mkbrr)
-            .arg("-n")
-            .arg("imdl (V1)")
-            .arg(&cmd_imdl)
-            .arg("-n")
-            .arg("torrenttools (V1)")
-            .arg(&cmd_torrenttools_v1)
-            .arg("-n")
-            .arg("torrenttools (V2)")
-            .arg(&cmd_torrenttools_v2)
-            .arg("-n")
-            .arg("torrenttools (Hybrid)")
-            .arg(&cmd_torrenttools_hybrid)
-            .status()
-            .expect("Failed to run hyperfine");
+            .arg(&cmd_torrite_hybrid);
+
+        if !only_torrite {
+            hyperfine_cmd.arg("-n").arg("mkbrr (V1)").arg(&cmd_mkbrr);
+            hyperfine_cmd.arg("-n").arg("imdl (V1)").arg(&cmd_imdl);
+            hyperfine_cmd.arg("-n").arg("torrenttools (V1)").arg(&cmd_torrenttools_v1);
+            hyperfine_cmd.arg("-n").arg("torrenttools (V2)").arg(&cmd_torrenttools_v2);
+            hyperfine_cmd.arg("-n").arg("torrenttools (Hybrid)").arg(&cmd_torrenttools_hybrid);
+        }
+
+        let status = hyperfine_cmd.status().expect("Failed to run hyperfine");
 
         if !status.success() {
             eprintln!("❌ Hyperfine reported an error for scenario: {}", case.name);
