@@ -52,3 +52,4 @@ jobs:
         with:
           executable-name: torrite
           target: ${{ matrix.platform.target }}
+          changes-file: CHANGELOG.md
