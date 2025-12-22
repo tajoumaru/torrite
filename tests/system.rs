@@ -19,7 +19,10 @@ fn test_version() {
     cmd.arg("--version")
         .assert()
         .success()
-        .stdout(predicate::str::contains("torrite 1.0.4"));
+        .stdout(predicate::str::contains(format!(
+            "torrite {}",
+            env!("CARGO_PKG_VERSION")
+        )));
 }
 
 #[test]

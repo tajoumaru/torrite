@@ -148,7 +148,7 @@ impl TorrentBuilder {
         static FILES: Emoji<'_, '_> = Emoji("📁 ", "f ");
 
         if self.verbose {
-            eprintln!("torrite 1.0.4 (Dry Run)");
+            eprintln!("torrite {} (Dry Run)", env!("CARGO_PKG_VERSION"));
             eprintln!();
             self.print_configuration();
         } else {
@@ -220,7 +220,7 @@ impl TorrentBuilder {
     /// Build the torrent metadata
     pub fn build(self) -> Result<Torrent> {
         if self.verbose {
-            eprintln!("torrite 1.0.4");
+            eprintln!("torrite {}", env!("CARGO_PKG_VERSION"));
             eprintln!();
             self.print_configuration();
         }

@@ -4,12 +4,7 @@ use std::path::PathBuf;
 use crate::models::{Mode, TorrentOptions};
 
 #[derive(Parser, Debug, Clone)]
-#[command(
-    name = "torrite",
-    version = "1.0.4",
-    about = "A CLI utility to create BitTorrent metainfo files",
-    author = "torrite contributors"
-)]
+#[command(author, version, about, long_about = None)]
 pub struct Cli {
     /// Path to a custom configuration file
     #[arg(long = "config", global = true, value_name = "FILE")]
