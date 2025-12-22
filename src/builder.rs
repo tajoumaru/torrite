@@ -87,8 +87,7 @@ impl TorrentBuilder {
                         if self.verbose {
                             eprintln!(
                                 "Warning: Requested piece length 2^{} exceeds tracker limit 2^{}. Capping.",
-                                power,
-                                max_exp
+                                power, max_exp
                             );
                         }
                         return (1u64 << max_exp, max_exp);
@@ -141,7 +140,7 @@ impl TorrentBuilder {
 
     /// Perform a dry run (scan files, calculate piece size, but don't hash)
     pub fn dry_run(&self) -> Result<()> {
-        use console::{style, Emoji};
+        use console::{Emoji, style};
         use indicatif::HumanBytes;
 
         static DRY_RUN: Emoji<'_, '_> = Emoji("🏃 ", "DRY-RUN ");
@@ -149,7 +148,7 @@ impl TorrentBuilder {
         static FILES: Emoji<'_, '_> = Emoji("📁 ", "f ");
 
         if self.verbose {
-            eprintln!("mktorrent-rs 2.0.0 (Dry Run)");
+            eprintln!("torrite 1.0.4 (Dry Run)");
             eprintln!();
             self.print_configuration();
         } else {
@@ -171,22 +170,44 @@ impl TorrentBuilder {
         let tracker_config = self.resolve_tracker_config();
 
         // Calculate or use provided piece length
-        let (piece_length, power) = self.calculate_piece_length_with_config(total_size, tracker_config);
+        let (piece_length, power) =
+            self.calculate_piece_length_with_config(total_size, tracker_config);
 
         let num_pieces = calculate_num_pieces(total_size, piece_length);
 
         eprintln!();
-        eprintln!("{} {}", CHECK, style("Dry Run Results:").bold().underlined());
-        eprintln!("{:<15} {}", style("Total Size:").bold(), style(HumanBytes(total_size)).green());
+        eprintln!(
+            "{} {}",
+            CHECK,
+            style("Dry Run Results:").bold().underlined()
+        );
+        eprintln!(
+            "{:<15} {}",
+            style("Total Size:").bold(),
+            style(HumanBytes(total_size)).green()
+        );
         eprintln!("{:<15} {}", style("File Count:").bold(), files.len());
-        eprintln!("{:<15} {} (2^{})", style("Piece Length:").bold(), style(HumanBytes(piece_length)).yellow(), power);
+        eprintln!(
+            "{:<15} {} (2^{})",
+            style("Piece Length:").bold(),
+            style(HumanBytes(piece_length)).yellow(),
+            power
+        );
         eprintln!("{:<15} {}", style("Piece Count:").bold(), num_pieces);
         eprintln!("{:<15} {:?}", style("Mode:").bold(), self.options.mode);
-        
+
         if self.verbose {
-            eprintln!("\n{} {}", FILES, style("Files that would be included:").bold());
+            eprintln!(
+                "\n{} {}",
+                FILES,
+                style("Files that would be included:").bold()
+            );
             for file in files.iter().take(20) {
-                 eprintln!("  - {:<40} {}", file.path.display(), style(HumanBytes(file.len)).dim());
+                eprintln!(
+                    "  - {:<40} {}",
+                    file.path.display(),
+                    style(HumanBytes(file.len)).dim()
+                );
             }
             if files.len() > 20 {
                 eprintln!("  ... and {} more", style(files.len() - 20).dim());
@@ -199,7 +220,7 @@ impl TorrentBuilder {
     /// Build the torrent metadata
     pub fn build(self) -> Result<Torrent> {
         if self.verbose {
-            eprintln!("mktorrent-rs 2.0.0");
+            eprintln!("torrite 1.0.4");
             eprintln!();
             self.print_configuration();
         }
@@ -224,10 +245,11 @@ impl TorrentBuilder {
         let tracker_config = self.resolve_tracker_config();
 
         // Calculate or use provided piece length
-        let (piece_length, power) = self.calculate_piece_length_with_config(total_size, tracker_config);
-        
+        let (piece_length, power) =
+            self.calculate_piece_length_with_config(total_size, tracker_config);
+
         if self.verbose {
-             eprintln!("Using piece length: {} bytes (2^{})", piece_length, power);
+            eprintln!("Using piece length: {} bytes (2^{})", piece_length, power);
         }
 
         let num_pieces = calculate_num_pieces(total_size, piece_length);
@@ -414,7 +436,7 @@ impl TorrentBuilder {
 
         // Resolve tracker config again
         let tracker_config = self.resolve_tracker_config();
-        
+
         let source_string = if self.options.source_string.is_some() {
             self.options.source_string.clone()
         } else {
@@ -488,7 +510,7 @@ impl TorrentBuilder {
             announce,
             announce_list,
             comment: self.options.comment.clone(),
-            created_by: format!("mktorrent-rs {}", env!("CARGO_PKG_VERSION")),
+            created_by: format!("torrite {}", env!("CARGO_PKG_VERSION")),
             creation_date,
             info,
             url_list: if self.options.web_seed.is_empty() {
@@ -542,7 +564,7 @@ mod tests {
     fn test_tracker_defaults_anthelion() {
         let mut options = TorrentOptions::default();
         options.announce = vec!["https://anthelion.me/announce".to_string()];
-        
+
         let builder = TorrentBuilder::new(PathBuf::from("."), options);
         let config = builder.resolve_tracker_config().unwrap();
         assert_eq!(config.default_source, Some("ANT"));
@@ -553,22 +575,23 @@ mod tests {
     fn test_tracker_defaults_ptp() {
         let mut options = TorrentOptions::default();
         options.announce = vec!["https://passthepopcorn.me/announce".to_string()];
-        
+
         let builder = TorrentBuilder::new(PathBuf::from("."), options);
         let config = builder.resolve_tracker_config().unwrap();
         assert_eq!(config.default_source, Some("PTP"));
-        
+
         // Ranges:
         // {MaxSize: 58 << 20, PieceExp: 16},    // 64 KiB for <= 58 MiB
         // {MaxSize: 122 << 20, PieceExp: 17},   // 128 KiB for 58-122 MiB
-        
+
         // 50 MiB -> 16
         let (len, pow) = builder.calculate_piece_length_with_config(50 * 1024 * 1024, Some(config));
         assert_eq!(pow, 16);
         assert_eq!(len, 1 << 16);
 
         // 100 MiB -> 17
-        let (len, pow) = builder.calculate_piece_length_with_config(100 * 1024 * 1024, Some(config));
+        let (len, pow) =
+            builder.calculate_piece_length_with_config(100 * 1024 * 1024, Some(config));
         assert_eq!(pow, 17);
         assert_eq!(len, 1 << 17);
     }
@@ -577,7 +600,7 @@ mod tests {
     fn test_tracker_defaults_ggn_max_limit() {
         let mut options = TorrentOptions::default();
         options.announce = vec!["https://gazellegames.net/announce".to_string()];
-        
+
         // GGn has max piece length 26.
         let builder = TorrentBuilder::new(PathBuf::from("."), options.clone());
         let config = builder.resolve_tracker_config().unwrap();
@@ -585,7 +608,7 @@ mod tests {
         // If we request 28, it should cap at 26.
         let mut builder_override = TorrentBuilder::new(PathBuf::from("."), options.clone());
         builder_override.options.piece_length = Some(28);
-        
+
         let (len, pow) = builder_override.calculate_piece_length_with_config(100, Some(config));
         assert_eq!(pow, 26);
         assert_eq!(len, 1 << 26);

@@ -12,6 +12,8 @@ Named after *ferrite* (iron oxide), keeping true to the metal-themed Rust naming
 - **BitTorrent v2 support** — Create modern v2-only or hybrid (v1+v2) torrents with `--v2` and `--hybrid` flags
 - **Blazing fast performance** — See benchmarks below for real-world speed comparisons
 - **Multi-threaded hashing** — Utilizes all CPU cores by default for maximum throughput
+- **Verification & Editing** — Verify local files against metadata or edit existing torrent files
+- **Configuration & Profiles** — Save defaults and use profiles for specific trackers
 
 ## Performance
 
@@ -56,77 +58,115 @@ cargo build --release
 
 ## Usage
 
-### Basic usage
+Torrite uses subcommands for different operations. The default subcommand is `create`, so you can use it just like `mktorrent`.
 
-Create a torrent with a tracker URL:
+### Create a torrent (Default)
 
 ```bash
+# Basic usage (defaults to 'create')
 torrite -a http://tracker.example.com:8080/announce my-file.iso
+
+# Explicit subcommand
+torrite create -a http://tracker.example.com/announce my-data/
+
+# Use a specific profile (e.g., PTP, GGn) defined in config
+torrite -P PTP -a http://tracker.example.com/announce my-movie.mkv
 ```
 
-### Create a v2-only torrent
+### Verify a torrent
 
 ```bash
-torrite --v2 -a http://tracker.example.com:8080/announce my-data/
+torrite verify --path /path/to/downloaded/files my-torrent.torrent
 ```
 
-### Create a hybrid torrent (v1 + v2)
+### Edit a torrent
 
 ```bash
-torrite --hybrid -a http://tracker.example.com:8080/announce my-data/
+# Change the announce URL
+torrite edit --replace-announce http://new.tracker.com/announce my-torrent.torrent
+
+# Make it private
+torrite edit --private my-torrent.torrent
 ```
 
-### Advanced usage
+### Inspect metadata
 
 ```bash
-# Private torrent with custom piece length and comment
-torrite -a http://tracker.example.com/announce \
-  -p \
-  -l 20 \
-  -c "My awesome torrent" \
-  -o output.torrent \
-  my-directory/
-
-# Multiple trackers for redundancy
-torrite -a http://tracker1.example.com/announce \
-  -a http://tracker2.example.com/announce \
-  -a udp://tracker3.example.com:6969/announce \
-  my-file.tar.gz
-
-# Exclude unwanted files
-torrite -a http://tracker.example.com/announce \
-  -e "*.DS_Store,*.tmp,Thumbs.db" \
-  my-project/
+torrite inspect my-torrent.torrent
 ```
 
 ## Command-line Options
 
 ```
-Usage: torrite [OPTIONS] <TARGET>
+Usage: torrite [OPTIONS] <COMMAND>
+
+Commands:
+  create   Create a new torrent (default)
+  verify   Verify local files against a torrent
+  inspect  Inspect a torrent file's metadata
+  edit     Edit an existing torrent's metadata
+  help     Print this message or the help of the given subcommand(s)
+
+Options:
+      --config <FILE>  Path to a custom configuration file
+  -h, --help           Print help
+  -V, --version        Print version
+```
+
+### Create Options
+
+```
+Usage: torrite create [OPTIONS] <TARGET>
 
 Arguments:
   <TARGET>  The file or directory to create a torrent from
 
 Options:
-  -a, --announce <URL>         Announce URL(s) - can be specified multiple times for backup trackers
-  -c, --comment <COMMENT>      Add a comment to the metainfo
-  -d, --no-date                Don't write the creation date
-  -e, --exclude <PATTERN>      Exclude files matching pattern (glob) - can be comma-separated
-  -f, --force                  Overwrite output file if it exists
-  -l, --piece-length <N>       Set the piece length to 2^N bytes (e.g., 18 for 256KB)
-  -n, --name <NAME>            Set the name of the torrent (defaults to basename of target)
-  -o, --output <FILE>          Set the output file path (defaults to <name>.torrent)
-  -p, --private                Set the private flag
-  -s, --source <SOURCE>        Add source string embedded in infohash
-  -t, --threads <N>            Number of threads for hashing (defaults to number of CPU cores)
-  -v, --verbose                Verbose output
-  -w, --web-seed <URL>         Web seed URL(s) - can be specified multiple times
-  -x, --cross-seed             Ensure info hash is unique for easier cross-seeding
-      --v2                     Create a v2-only torrent (no v1 compatibility)
-      --hybrid                 Create a hybrid torrent (v1 + v2 compatibility)
-  -h, --help                   Print help
-  -V, --version                Print version
+      --config <FILE>      Path to a custom configuration file
+  -P, --profile <PROFILE>  Profile to use from configuration
+  -a, --announce <URL>     Announce URL(s) - can be specified multiple times
+  -c, --comment <COMMENT>  Add a comment to the metainfo
+  -d, --no-date            Don't write the creation date
+  -e, --exclude <PATTERN>  Exclude files matching pattern (glob)
+  -f, --force              Overwrite output file if it exists
+  -l, --piece-length <N>   Set the piece length to 2^N bytes (e.g., 18 for 256KB)
+  -n, --name <NAME>        Set the name of the torrent
+  -o, --output <FILE>      Set the output file path
+      --date <TIMESTAMP>   Set the creation date (Unix timestamp)
+  -p, --private            Set the private flag
+  -s, --source <SOURCE>    Add source string embedded in infohash
+  -t, --threads <N>        Number of threads for hashing
+  -v, --verbose            Verbose output
+  -w, --web-seed <URL>     Web seed URL(s)
+  -x, --cross-seed         Ensure info hash is unique for easier cross-seeding
+      --info-hash          Display the info hash of the created torrent
+      --json               Output results in JSON format
+      --v2                 Create a v2-only torrent (no v1 compatibility)
+      --hybrid             Create a hybrid torrent (v1 + v2 compatibility)
+      --dry-run            Calculate piece length and show info without hashing
 ```
+
+## Configuration & Profiles
+
+Torrite supports configuration via TOML files. It looks for config in:
+1. `--config` CLI argument
+2. `TORRITE_CONFIG` environment variable
+3. `torrite.toml` in current directory
+4. `~/.config/torrite/config.toml` (or equivalent on your OS)
+
+Example config:
+
+```toml
+[default]
+piece_length = 19
+announce = ["http://my.default.tracker/announce"]
+
+[profiles.PTP]
+source = "PTP"
+piece_length = 20
+```
+
+Use profiles with `-P`: `torrite -P PTP ...`
 
 ## BitTorrent v2 Support
 

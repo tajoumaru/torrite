@@ -12,6 +12,7 @@ It aims for full command-line compatibility with `mktorrent` while offering sign
 1.  **mktorrent Compatibility**: Must support all flags from `mktorrent` and behave identically where possible.
 2.  **Performance**: The tool is designed to be "blazing fast", utilizing multi-threading and optimized I/O.
 3.  **BitTorrent v2**: Support for v2-only and hybrid (v1 + v2) torrent creation.
+4.  **Torrent Management**: Beyond creation, support verifying files against metadata, editing existing torrents, and inspecting metadata.
 
 ## Codebase Structure
 
@@ -25,11 +26,15 @@ The project is a standard Rust binary crate with a library structure.
 -   `src/builder.rs`: Logic for building the torrent metadata (`TorrentBuilder`).
 -   `src/cli.rs`: CLI argument parsing using `clap`.
 -   `src/config.rs`: Configuration handling.
+-   `src/edit.rs`: Logic for editing existing torrent files.
+-   `src/inspect.rs`: Logic for inspecting/printing torrent metadata.
 -   `src/hashing/`: Hashing logic (SHA-1 for v1, SHA-256 for v2, parallel processing).
 -   `src/models/`: Data structures for torrent files (`Torrent`, `File`, etc.).
 -   `src/piece.rs`: Piece calculation and management.
 -   `src/scanner.rs`: File system scanning logic (`jwalk`).
+-   `src/trackers.rs`: Tracker specific defaults and logic.
 -   `src/tree.rs`: Merkle tree implementation for v2 torrents.
+-   `src/verify.rs`: Logic for verifying local files against a torrent.
 
 ## Development Guidelines
 
@@ -37,6 +42,7 @@ The project is a standard Rust binary crate with a library structure.
 -   **Testing**:
     -   Run tests via `cargo test`.
     -   Performance regressions should be checked using the benchmark tools in `src/bin/`.
+    - Unit tests are required and placed inside the files with the functions, integration tests are found in `tests/` and system tests can be found in `tests/system.rs`.
 -   **Style**: Follow standard Rust idioms (rustfmt, clippy).
 
 ## Common Commands

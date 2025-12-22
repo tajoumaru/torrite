@@ -5,9 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.0.4] - 2025-12-22
 
 ### Added
+- **Configuration & Profiles**:
+  - Support for TOML configuration files with precedence: CLI argument, environment variable, local file, and global user config.
+  - Added `-P`/`--profile` argument to the `create` command to apply tracker-specific or user-defined presets.
+  - CLI now displays applied profile settings at startup.
 - **Tracker Auto-Defaults**:
   - Automatically apply recommended piece sizes and source strings for popular trackers (PTP, GGn, MTV, Anthelion, etc.).
 - **New Subcommand**:

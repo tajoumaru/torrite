@@ -183,6 +183,10 @@ pub struct TorrentSummary {
     pub piece_length: u64,
     pub mode: Mode,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub comment: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub info_hash_v1: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub info_hash_v2: Option<String>,

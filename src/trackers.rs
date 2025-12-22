@@ -267,3 +267,45 @@ pub fn find_tracker_config(tracker_url: &str) -> Option<&'static TrackerConfig> 
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_find_tracker_config() {
+        // Known trackers
+        assert!(find_tracker_config("https://passthepopcorn.me/announce").is_some());
+        assert!(find_tracker_config("http://gazellegames.net/announce.php").is_some());
+        assert!(find_tracker_config("https://anthelion.me/announce").is_some());
+        
+        // Check specific values for PTP
+        let ptp = find_tracker_config("passthepopcorn.me").unwrap();
+        assert_eq!(ptp.default_source, Some("PTP"));
+        assert!(!ptp.use_default_ranges);
+        
+        // Check specific values for GGn
+        let ggn = find_tracker_config("gazellegames.net").unwrap();
+        assert_eq!(ggn.default_source, Some("GGn"));
+        
+        // Unknown tracker
+        assert!(find_tracker_config("https://example.com/announce").is_none());
+    }
+
+    #[test]
+    fn test_tracker_defaults_integrity() {
+        for config in TRACKER_CONFIGS {
+            // Ensure every config has at least one URL
+            assert!(!config.urls.is_empty());
+            
+            // Check range consistency if present
+            if !config.piece_size_ranges.is_empty() {
+                let mut last_max = 0;
+                for range in config.piece_size_ranges {
+                    assert!(range.max_size > last_max);
+                    last_max = range.max_size;
+                }
+            }
+        }
+    }
+}

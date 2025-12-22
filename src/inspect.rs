@@ -33,6 +33,10 @@ pub fn inspect_torrent(args: InspectArgs) -> Result<()> {
         println!("{:<15} {}", style("Date:").bold(), datetime);
     }
 
+    if let Some(source) = &torrent.info.source {
+        println!("{:<15} {}", style("Source:").bold(), source);
+    }
+
     println!("{:<15} {}", style("Total Size:").bold(), style(HumanBytes(torrent.total_size())).green());
     println!("{:<15} {}", style("Piece Size:").bold(), style(HumanBytes(torrent.info.piece_length)).yellow());
     

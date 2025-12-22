@@ -6,11 +6,15 @@ use crate::models::{Mode, TorrentOptions};
 #[derive(Parser, Debug, Clone)]
 #[command(
     name = "torrite",
-    version = "2.0.0",
+    version = "1.0.4",
     about = "A CLI utility to create BitTorrent metainfo files",
     author = "torrite contributors"
 )]
 pub struct Cli {
+    /// Path to a custom configuration file
+    #[arg(long = "config", global = true, value_name = "FILE")]
+    pub config: Option<PathBuf>,
+
     #[command(subcommand)]
     pub command: Commands,
 }
@@ -35,6 +39,10 @@ pub struct CreateArgs {
     /// The file or directory to create a torrent from
     #[arg(value_name = "TARGET")]
     pub source: PathBuf,
+
+    /// Profile to use from configuration
+    #[arg(short = 'P', long = "profile", value_name = "PROFILE")]
+    pub profile: Option<String>,
 
     /// Announce URL(s) - can be specified multiple times for backup trackers
     #[arg(short = 'a', long = "announce", value_name = "URL")]

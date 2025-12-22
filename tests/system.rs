@@ -8,7 +8,9 @@ fn test_help() {
     cmd.arg("--help")
         .assert()
         .success()
-        .stdout(predicate::str::contains("A CLI utility to create BitTorrent metainfo files"));
+        .stdout(predicate::str::contains(
+            "A CLI utility to create BitTorrent metainfo files",
+        ));
 }
 
 #[test]
@@ -17,7 +19,7 @@ fn test_version() {
     cmd.arg("--version")
         .assert()
         .success()
-        .stdout(predicate::str::contains("torrite 2.0.0"));
+        .stdout(predicate::str::contains("torrite 1.0.4"));
 }
 
 #[test]
@@ -35,7 +37,7 @@ fn test_create_basic() {
         .assert()
         .success()
         .stderr(predicate::str::contains("Created:"));
-        
+
     assert!(temp_dir.path().join("test.torrent").exists());
 }
 
@@ -52,16 +54,14 @@ fn test_create_implicit() {
         .arg(&output_file)
         .assert()
         .success();
-        
+
     assert!(output_file.exists());
 }
 
 #[test]
 fn test_missing_file() {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_torrite"));
-    cmd.arg("non_existent_file.txt")
-        .assert()
-        .failure();
+    cmd.arg("non_existent_file.txt").assert().failure();
 }
 
 #[test]
@@ -136,13 +136,13 @@ fn test_edit() {
         .arg("New Comment")
         .assert()
         .success();
-        
-    // Verify comment (by checking file content or creating again and checking output, 
+
+    // Verify comment (by checking file content or creating again and checking output,
     // but simply checking success is good for now, maybe grep the file content?)
-    // A simple check is that the command succeeded. 
+    // A simple check is that the command succeeded.
     // Ideally we would inspect the torrent file, but that requires reading bencode.
     // We can use verify to check if it's still valid.
-    
+
     let mut cmd_verify = Command::new(env!("CARGO_BIN_EXE_torrite"));
     cmd_verify
         .arg("verify")
@@ -166,7 +166,7 @@ fn test_dry_run() {
         .assert()
         .success()
         .stderr(predicate::str::contains("Dry Run Results:"));
-    
+
     let output_file = temp_dir.path().join("dry_run_out.torrent");
     let mut cmd2 = Command::new(env!("CARGO_BIN_EXE_torrite"));
     cmd2.arg("create")
@@ -176,7 +176,7 @@ fn test_dry_run() {
         .arg("--dry-run")
         .assert()
         .success();
-        
+
     assert!(!output_file.exists());
 }
 
@@ -197,24 +197,96 @@ fn test_inspect() {
         .assert()
         .success();
 
-        // Inspect
+    // Inspect
 
-        let mut cmd_inspect = Command::new(env!("CARGO_BIN_EXE_torrite"));
+    let mut cmd_inspect = Command::new(env!("CARGO_BIN_EXE_torrite"));
 
-        cmd_inspect
+    cmd_inspect
+        .arg("inspect")
+        .arg(&torrent_file)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Torrent Metadata:"))
+        .stdout(predicate::str::contains("Name:"));
+}
 
-            .arg("inspect")
+#[test]
+fn test_config_file_and_profile() {
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_torrite"));
+    let temp_dir = tempfile::tempdir().unwrap();
+    let source_file = temp_dir.path().join("profile_test.txt");
+    fs::write(&source_file, "profile test data").unwrap();
 
-            .arg(&torrent_file)
+    // Create a config file
+    let config_path = temp_dir.path().join("config.toml");
+    let mut config_file = fs::File::create(&config_path).unwrap();
+    use std::io::Write; // Ensure Write trait is in scope for writeln!
+    writeln!(
+        config_file,
+        r#"
+        [profiles.my_custom]
+        source = "MY_SOURCE"
+        comment = "Profile Comment"
+        piece_length = 18
+    "#
+    )
+    .unwrap();
 
-            .assert()
+    let output_file = temp_dir.path().join("profile_out.torrent");
 
-            .success()
+    cmd.arg("create")
+        .arg(&source_file)
+        .arg("--config")
+        .arg(&config_path)
+        .arg("-P")
+        .arg("my_custom")
+        .arg("-o")
+        .arg(&output_file)
+        .arg("--json") // Use JSON output to easily verify metadata
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"source\": \"MY_SOURCE\""))
+        .stdout(predicate::str::contains("\"comment\": \"Profile Comment\""));
+}
 
-            .stdout(predicate::str::contains("Torrent Metadata:"))
+#[test]
+fn test_tracker_defaults_ptp() {
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_torrite"));
+    let temp_dir = tempfile::tempdir().unwrap();
+    let source_file = temp_dir.path().join("ptp_test.txt");
+    fs::write(&source_file, "ptp test data").unwrap();
+    let output_file = temp_dir.path().join("ptp_out.torrent");
 
-            .stdout(predicate::str::contains("Name:"));
+    cmd.arg("create")
+        .arg(&source_file)
+        .arg("-a")
+        .arg("https://passthepopcorn.me/announce")
+        .arg("-o")
+        .arg(&output_file)
+        .arg("--json")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"source\": \"PTP\"")); // Should auto-apply source "PTP"
+}
 
-    }
+#[test]
+fn test_tracker_defaults_override() {
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_torrite"));
+    let temp_dir = tempfile::tempdir().unwrap();
+    let source_file = temp_dir.path().join("override_test.txt");
+    fs::write(&source_file, "override test data").unwrap();
+    let output_file = temp_dir.path().join("override_out.torrent");
 
-    
+    cmd.arg("create")
+        .arg(&source_file)
+        .arg("-a")
+        .arg("https://passthepopcorn.me/announce")
+        .arg("-s")
+        .arg("CUSTOM_SOURCE") // Manually override the auto-default
+        .arg("-o")
+        .arg(&output_file)
+        .arg("--json")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"source\": \"CUSTOM_SOURCE\""));
+}
