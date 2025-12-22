@@ -1,6 +1,10 @@
 name: CI
 
-on: [push]
+on:
+  workflow_call:
+  push:
+    branches:
+      - '**'
 
 env:
   CARGO_TERM_COLOR: always
