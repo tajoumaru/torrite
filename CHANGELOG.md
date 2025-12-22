@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Tracker Auto-Defaults**:
+  - Automatically apply recommended piece sizes and source strings for popular trackers (PTP, GGn, MTV, Anthelion, etc.).
 - **New Subcommand**:
   - `inspect`: detailed metadata display of a torrent file.
 - **CLI Improvements**:

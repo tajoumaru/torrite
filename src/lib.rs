@@ -23,6 +23,7 @@ pub mod hashing;
 pub mod models;
 pub mod piece;
 pub mod scanner;
+pub mod trackers;
 pub mod tree;
 
 // Re-export main types for convenience

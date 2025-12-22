@@ -55,6 +55,90 @@ impl TorrentBuilder {
         self
     }
 
+    /// Resolve tracker configuration based on announce URLs
+    fn resolve_tracker_config(&self) -> Option<&'static crate::trackers::TrackerConfig> {
+        if self.options.announce.is_empty() {
+            return None;
+        }
+        // Check all announce URLs
+        for tier_str in &self.options.announce {
+            for url in tier_str.split(',') {
+                if let Some(config) = crate::trackers::find_tracker_config(url.trim()) {
+                    return Some(config);
+                }
+            }
+        }
+        None
+    }
+
+    /// Calculate piece length considering tracker configurations
+    fn calculate_piece_length_with_config(
+        &self,
+        total_size: u64,
+        config: Option<&crate::trackers::TrackerConfig>,
+    ) -> (u64, u32) {
+        // 1. User override
+        if let Some(power) = self.options.piece_length {
+            // Check max limit from config
+            if let Some(cfg) = config {
+                if let Some(max_exp) = cfg.max_piece_length {
+                    if power > max_exp {
+                        // Warn and cap
+                        if self.verbose {
+                            eprintln!(
+                                "Warning: Requested piece length 2^{} exceeds tracker limit 2^{}. Capping.",
+                                power,
+                                max_exp
+                            );
+                        }
+                        return (1u64 << max_exp, max_exp);
+                    }
+                }
+            }
+            return (1u64 << power, power);
+        }
+
+        // 2. Config logic
+        if let Some(cfg) = config {
+            // Check ranges
+            if !cfg.piece_size_ranges.is_empty() {
+                for range in cfg.piece_size_ranges {
+                    if total_size <= range.max_size {
+                        let mut power = range.piece_exp;
+                        // Enforce max limit
+                        if let Some(max_exp) = cfg.max_piece_length {
+                            if power > max_exp {
+                                power = max_exp;
+                            }
+                        }
+                        return (1u64 << power, power);
+                    }
+                }
+                // No range match
+                if !cfg.use_default_ranges {
+                    // Use largest defined
+                    let last = cfg.piece_size_ranges.last().unwrap();
+                    let mut power = last.piece_exp;
+                    if let Some(max_exp) = cfg.max_piece_length {
+                        if power > max_exp {
+                            power = max_exp;
+                        }
+                    }
+                    return (1u64 << power, power);
+                }
+            } else if let Some(max_exp) = cfg.max_piece_length {
+                // No ranges, but max limit. Use default calc but cap.
+                let power = calculate_piece_length(total_size);
+                let final_power = std::cmp::min(power, max_exp);
+                return (1u64 << final_power, final_power);
+            }
+        }
+
+        // 3. Default
+        let power = calculate_piece_length(total_size);
+        (1u64 << power, power)
+    }
+
     /// Perform a dry run (scan files, calculate piece size, but don't hash)
     pub fn dry_run(&self) -> Result<()> {
         use console::{style, Emoji};
@@ -83,16 +167,11 @@ impl TorrentBuilder {
             anyhow::bail!("No files found to create torrent from");
         }
 
+        // Resolve tracker config
+        let tracker_config = self.resolve_tracker_config();
+
         // Calculate or use provided piece length
-        let (piece_length, power) = if let Some(power) = self.options.piece_length {
-            if power < 15 || power > 28 {
-                anyhow::bail!("piece length must be between 15 and 28 (2^15 to 2^28 bytes)");
-            }
-            (1u64 << power, power)
-        } else {
-            let power = calculate_piece_length(total_size);
-            (1u64 << power, power)
-        };
+        let (piece_length, power) = self.calculate_piece_length_with_config(total_size, tracker_config);
 
         let num_pieces = calculate_num_pieces(total_size, piece_length);
 
@@ -141,25 +220,15 @@ impl TorrentBuilder {
             anyhow::bail!("No files found to create torrent from");
         }
 
+        // Resolve tracker config
+        let tracker_config = self.resolve_tracker_config();
+
         // Calculate or use provided piece length
-        let piece_length = if let Some(power) = self.options.piece_length {
-            // Validate user-provided piece length
-            if power < 15 || power > 28 {
-                anyhow::bail!("piece length must be between 15 and 28 (2^15 to 2^28 bytes)");
-            }
-            let len = 1u64 << power;
-            if self.verbose {
-                eprintln!("Using piece length: {} bytes (2^{})", len, power);
-            }
-            len
-        } else {
-            let power = calculate_piece_length(total_size);
-            let len = 1u64 << power;
-            if self.verbose {
-                eprintln!("Calculated piece length: {} bytes (2^{})", len, power);
-            }
-            len
-        };
+        let (piece_length, power) = self.calculate_piece_length_with_config(total_size, tracker_config);
+        
+        if self.verbose {
+             eprintln!("Using piece length: {} bytes (2^{})", piece_length, power);
+        }
 
         let num_pieces = calculate_num_pieces(total_size, piece_length);
         if self.verbose {
@@ -343,6 +412,15 @@ impl TorrentBuilder {
             Some(serde_bytes::ByteBuf::from(pieces_bytes))
         };
 
+        // Resolve tracker config again
+        let tracker_config = self.resolve_tracker_config();
+        
+        let source_string = if self.options.source_string.is_some() {
+            self.options.source_string.clone()
+        } else {
+            tracker_config.and_then(|c| c.default_source.map(|s| s.to_string()))
+        };
+
         let info = Info {
             piece_length,
             pieces: pieces_section,
@@ -350,7 +428,7 @@ impl TorrentBuilder {
             private: if self.options.private { Some(1) } else { None },
             files: files_section,
             length: length_section,
-            source: self.options.source_string.clone(),
+            source: source_string,
             x_cross_seed: if self.options.cross_seed {
                 Some(generate_cross_seed_id())
             } else {
@@ -451,5 +529,65 @@ impl TorrentBuilder {
             eprintln!("  Cross-seed: enabled");
         }
         eprintln!();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::TorrentOptions;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_tracker_defaults_anthelion() {
+        let mut options = TorrentOptions::default();
+        options.announce = vec!["https://anthelion.me/announce".to_string()];
+        
+        let builder = TorrentBuilder::new(PathBuf::from("."), options);
+        let config = builder.resolve_tracker_config().unwrap();
+        assert_eq!(config.default_source, Some("ANT"));
+        assert_eq!(config.max_torrent_size, Some(250 * 1024));
+    }
+
+    #[test]
+    fn test_tracker_defaults_ptp() {
+        let mut options = TorrentOptions::default();
+        options.announce = vec!["https://passthepopcorn.me/announce".to_string()];
+        
+        let builder = TorrentBuilder::new(PathBuf::from("."), options);
+        let config = builder.resolve_tracker_config().unwrap();
+        assert_eq!(config.default_source, Some("PTP"));
+        
+        // Ranges:
+        // {MaxSize: 58 << 20, PieceExp: 16},    // 64 KiB for <= 58 MiB
+        // {MaxSize: 122 << 20, PieceExp: 17},   // 128 KiB for 58-122 MiB
+        
+        // 50 MiB -> 16
+        let (len, pow) = builder.calculate_piece_length_with_config(50 * 1024 * 1024, Some(config));
+        assert_eq!(pow, 16);
+        assert_eq!(len, 1 << 16);
+
+        // 100 MiB -> 17
+        let (len, pow) = builder.calculate_piece_length_with_config(100 * 1024 * 1024, Some(config));
+        assert_eq!(pow, 17);
+        assert_eq!(len, 1 << 17);
+    }
+
+    #[test]
+    fn test_tracker_defaults_ggn_max_limit() {
+        let mut options = TorrentOptions::default();
+        options.announce = vec!["https://gazellegames.net/announce".to_string()];
+        
+        // GGn has max piece length 26.
+        let builder = TorrentBuilder::new(PathBuf::from("."), options.clone());
+        let config = builder.resolve_tracker_config().unwrap();
+
+        // If we request 28, it should cap at 26.
+        let mut builder_override = TorrentBuilder::new(PathBuf::from("."), options.clone());
+        builder_override.options.piece_length = Some(28);
+        
+        let (len, pow) = builder_override.calculate_piece_length_with_config(100, Some(config));
+        assert_eq!(pow, 26);
+        assert_eq!(len, 1 << 26);
     }
 }
