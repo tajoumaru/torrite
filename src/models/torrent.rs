@@ -204,6 +204,7 @@ pub struct TorrentOptions {
     pub creation_date: Option<i64>,
     pub name: Option<String>,
     pub exclude: Vec<String>,
+    pub dry_run: bool,
 }
 
 impl Default for TorrentOptions {
@@ -221,6 +222,7 @@ impl Default for TorrentOptions {
             creation_date: None,
             name: None,
             exclude: Vec::new(),
+            dry_run: false,
         }
     }
 }

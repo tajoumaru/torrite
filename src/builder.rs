@@ -55,6 +55,68 @@ impl TorrentBuilder {
         self
     }
 
+    /// Perform a dry run (scan files, calculate piece size, but don't hash)
+    pub fn dry_run(&self) -> Result<()> {
+        use console::{style, Emoji};
+        use indicatif::HumanBytes;
+
+        static DRY_RUN: Emoji<'_, '_> = Emoji("🏃 ", "DRY-RUN ");
+        static CHECK: Emoji<'_, '_> = Emoji("✅ ", "OK ");
+        static FILES: Emoji<'_, '_> = Emoji("📁 ", "f ");
+
+        if self.verbose {
+            eprintln!("mktorrent-rs 2.0.0 (Dry Run)");
+            eprintln!();
+            self.print_configuration();
+        } else {
+            eprintln!("{} {}", DRY_RUN, style("Dry run: scanning files...").bold());
+        }
+
+        let (files, total_size) = scan_files(
+            &self.source,
+            self.output_file.as_deref(),
+            &self.options.exclude,
+            self.verbose,
+        )?;
+
+        if files.is_empty() {
+            anyhow::bail!("No files found to create torrent from");
+        }
+
+        // Calculate or use provided piece length
+        let (piece_length, power) = if let Some(power) = self.options.piece_length {
+            if power < 15 || power > 28 {
+                anyhow::bail!("piece length must be between 15 and 28 (2^15 to 2^28 bytes)");
+            }
+            (1u64 << power, power)
+        } else {
+            let power = calculate_piece_length(total_size);
+            (1u64 << power, power)
+        };
+
+        let num_pieces = calculate_num_pieces(total_size, piece_length);
+
+        eprintln!();
+        eprintln!("{} {}", CHECK, style("Dry Run Results:").bold().underlined());
+        eprintln!("{:<15} {}", style("Total Size:").bold(), style(HumanBytes(total_size)).green());
+        eprintln!("{:<15} {}", style("File Count:").bold(), files.len());
+        eprintln!("{:<15} {} (2^{})", style("Piece Length:").bold(), style(HumanBytes(piece_length)).yellow(), power);
+        eprintln!("{:<15} {}", style("Piece Count:").bold(), num_pieces);
+        eprintln!("{:<15} {:?}", style("Mode:").bold(), self.options.mode);
+        
+        if self.verbose {
+            eprintln!("\n{} {}", FILES, style("Files that would be included:").bold());
+            for file in files.iter().take(20) {
+                 eprintln!("  - {:<40} {}", file.path.display(), style(HumanBytes(file.len)).dim());
+            }
+            if files.len() > 20 {
+                eprintln!("  ... and {} more", style(files.len() - 20).dim());
+            }
+        }
+
+        Ok(())
+    }
+
     /// Build the torrent metadata
     pub fn build(self) -> Result<Torrent> {
         if self.verbose {

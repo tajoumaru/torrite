@@ -152,3 +152,69 @@ fn test_edit() {
         .assert()
         .success();
 }
+
+#[test]
+fn test_dry_run() {
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_torrite"));
+    let temp_dir = tempfile::tempdir().unwrap();
+    let source_file = temp_dir.path().join("dry_run.txt");
+    fs::write(&source_file, "dry run data").unwrap();
+
+    cmd.arg("create")
+        .arg(&source_file)
+        .arg("--dry-run")
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("Dry Run Results:"));
+    
+    let output_file = temp_dir.path().join("dry_run_out.torrent");
+    let mut cmd2 = Command::new(env!("CARGO_BIN_EXE_torrite"));
+    cmd2.arg("create")
+        .arg(&source_file)
+        .arg("-o")
+        .arg(&output_file)
+        .arg("--dry-run")
+        .assert()
+        .success();
+        
+    assert!(!output_file.exists());
+}
+
+#[test]
+fn test_inspect() {
+    let mut cmd_create = Command::new(env!("CARGO_BIN_EXE_torrite"));
+    let temp_dir = tempfile::tempdir().unwrap();
+    let source_file = temp_dir.path().join("inspect.txt");
+    fs::write(&source_file, "inspect data").unwrap();
+    let torrent_file = temp_dir.path().join("inspect.torrent");
+
+    // Create
+    cmd_create
+        .arg("create")
+        .arg(&source_file)
+        .arg("-o")
+        .arg(&torrent_file)
+        .assert()
+        .success();
+
+        // Inspect
+
+        let mut cmd_inspect = Command::new(env!("CARGO_BIN_EXE_torrite"));
+
+        cmd_inspect
+
+            .arg("inspect")
+
+            .arg(&torrent_file)
+
+            .assert()
+
+            .success()
+
+            .stdout(predicate::str::contains("Torrent Metadata:"))
+
+            .stdout(predicate::str::contains("Name:"));
+
+    }
+
+    

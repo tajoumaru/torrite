@@ -12,9 +12,11 @@ use torrite::TorrentBuilder;
 
 mod verify;
 mod edit;
+mod inspect;
 
 use verify::verify_torrent;
 use edit::edit_torrent;
+use inspect::inspect_torrent;
 
 static SUCCESS: Emoji<'_, '_> = Emoji("✅ ", "OK");
 static MAGNET: Emoji<'_, '_> = Emoji("🧲 ", "MAG");
@@ -28,6 +30,7 @@ fn main() -> Result<()> {
         let first_arg = &args[1];
         if first_arg != "verify"
             && first_arg != "edit"
+            && first_arg != "inspect"
             && first_arg != "create"
             && first_arg != "help"
             && first_arg != "--help"
@@ -46,6 +49,7 @@ fn main() -> Result<()> {
         Commands::Create(args) => cmd_create(args),
         Commands::Verify(args) => verify_torrent(args),
         Commands::Edit(args) => edit_torrent(args),
+        Commands::Inspect(args) => inspect_torrent(args),
     }
 }
 
@@ -76,6 +80,7 @@ fn cmd_create(args: CreateArgs) -> Result<()> {
     // Convert args to options
     let options = args.clone().into_options();
     let mode = options.mode; // Capture mode before options is moved into TorrentBuilder
+    let is_dry_run = options.dry_run;
 
     // Build the torrent
     let mut builder = TorrentBuilder::new(source, options)
@@ -85,6 +90,11 @@ fn cmd_create(args: CreateArgs) -> Result<()> {
 
     if let Some(t) = threads {
         builder = builder.with_threads(t);
+    }
+
+    if is_dry_run {
+        builder.dry_run()?;
+        return Ok(());
     }
 
     let torrent = builder.build()?;

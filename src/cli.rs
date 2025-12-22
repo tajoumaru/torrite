@@ -23,6 +23,9 @@ pub enum Commands {
     /// Verify local files against a torrent
     Verify(VerifyArgs),
 
+    /// Inspect a torrent file's metadata
+    Inspect(InspectArgs),
+
     /// Edit an existing torrent's metadata
     Edit(EditArgs),
 }
@@ -108,6 +111,10 @@ pub struct CreateArgs {
     /// Create a hybrid torrent (v1 + v2 compatibility)
     #[arg(long = "hybrid", conflicts_with = "v2")]
     pub hybrid: bool,
+
+    /// Calculate piece length and show info without hashing
+    #[arg(long = "dry-run")]
+    pub dry_run: bool,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -119,6 +126,13 @@ pub struct VerifyArgs {
     /// The path to the data directory or file (defaults to current directory)
     #[arg(long = "path", value_name = "PATH")]
     pub path: Option<PathBuf>,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct InspectArgs {
+    /// The torrent file to inspect
+    #[arg(value_name = "TORRENT")]
+    pub torrent: PathBuf,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -182,6 +196,7 @@ impl CreateArgs {
             creation_date,
             name: self.name,
             exclude: self.exclude,
+            dry_run: self.dry_run,
         }
     }
 }
