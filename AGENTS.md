@@ -26,8 +26,9 @@ The project is a standard Rust binary crate with a library structure.
 -   `src/builder.rs`: Logic for building the torrent metadata (`TorrentBuilder`).
 -   `src/cli.rs`: CLI argument parsing using `clap`.
 -   `src/config.rs`: Configuration handling.
--   `src/edit.rs`: Logic for editing existing torrent files.
+-   `src/edit.rs`: Logic for editing existing torrent files (supports both CLI and interactive TUI mode using ratatui).
 -   `src/inspect.rs`: Logic for inspecting/printing torrent metadata.
+-   `src/interactive_create.rs`: Interactive TUI for torrent creation (using ratatui).
 -   `src/hashing/`: Hashing logic (SHA-1 for v1, SHA-256 for v2, parallel processing).
 -   `src/models/`: Data structures for torrent files (`Torrent`, `File`, etc.).
 -   `src/piece.rs`: Piece calculation and management.
@@ -38,7 +39,7 @@ The project is a standard Rust binary crate with a library structure.
 
 ## Development Guidelines
 
--   **Dependencies**: The project uses `clap` for CLI, `serde` + `serde_bencode` for serialization, `sha1`/`sha2` for hashing, and `rayon` for parallelism.
+-   **Dependencies**: The project uses `clap` for CLI, `serde` + `serde_bencode` for serialization, `sha1`/`sha2` for hashing, `rayon` for parallelism, and `ratatui` + `crossterm` for the interactive TUI.
 -   **Testing**:
     -   Run tests via `cargo test`.
     -   Performance regressions should be checked using the benchmark tools in `src/bin/`.
@@ -58,3 +59,4 @@ The project is a standard Rust binary crate with a library structure.
 -   When modifying CLI arguments, ensure backward compatibility with `mktorrent` flags.
 -   Performance is critical. Avoid blocking I/O on the main thread where possible and prefer parallel iterators for heavy computations.
 -   Pay attention to `v1`, `v2`, and `hybrid` modes. Changes in hashing logic must support all three configurations correctly.
+-   **Interactive Mode**: The tool automatically enters interactive TUI mode when `create` is called without a target, or when `edit` is called without modification flags. This provides a user-friendly alternative to CLI arguments.

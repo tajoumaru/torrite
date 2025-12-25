@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Interactive Mode**:
+  - Interactive torrent creation interface using ratatui.
+  - Interactive editing interface with ratatui for the `edit` command.
+
+### Fixed
+- Version texts now use cargo package version instead of hardcoded values.
+
 ## [1.0.4] - 2025-12-22
 
 ### Added

@@ -10,6 +10,7 @@ Named after *ferrite* (iron oxide), keeping true to the metal-themed Rust naming
 
 - **Full [mktorrent](https://github.com/pobrn/mktorrent) compatibility** — All command-line flags from mktorrent are supported and work identically
 - **BitTorrent v2 support** — Create modern v2-only or hybrid (v1+v2) torrents with `--v2` and `--hybrid` flags
+- **Interactive TUI mode** — User-friendly terminal interface for creating and editing torrents (powered by ratatui)
 - **Blazing fast performance** — See benchmarks below for real-world speed comparisons
 - **Multi-threaded hashing** — Utilizes all CPU cores by default for maximum throughput
 - **Verification & Editing** — Verify local files against metadata or edit existing torrent files
@@ -60,6 +61,22 @@ cargo build --release
 
 Torrite uses subcommands for different operations. The default subcommand is `create`, so you can use it just like `mktorrent`.
 
+### Interactive Mode
+
+Torrite features an interactive terminal UI for easier torrent creation and editing:
+
+```bash
+# Launch interactive creation wizard
+torrite
+# or
+torrite create
+
+# Launch interactive editor
+torrite edit my-torrent.torrent
+```
+
+The interactive mode provides a user-friendly interface with guided prompts for all torrent settings.
+
 ### Create a torrent (Default)
 
 ```bash
@@ -82,7 +99,10 @@ torrite verify --path /path/to/downloaded/files my-torrent.torrent
 ### Edit a torrent
 
 ```bash
-# Change the announce URL
+# Interactive mode (no flags)
+torrite edit my-torrent.torrent
+
+# CLI mode - Change the announce URL
 torrite edit --replace-announce http://new.tracker.com/announce my-torrent.torrent
 
 # Make it private
