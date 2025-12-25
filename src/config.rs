@@ -25,7 +25,7 @@ use anyhow::{Context, Result};
 use serde::Deserialize;
 use directories::ProjectDirs;
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, Clone)]
 pub struct Config {
     #[serde(default)]
     pub profiles: HashMap<String, Profile>,

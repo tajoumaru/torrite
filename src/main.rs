@@ -14,6 +14,7 @@ use torrite::models::TorrentSummary;
 mod edit;
 mod inspect;
 mod verify;
+mod interactive_create;
 
 use edit::edit_torrent;
 use inspect::inspect_torrent;
@@ -27,7 +28,10 @@ fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let mut modified_args = args.clone();
 
-    if args.len() > 1 {
+    if args.len() == 1 {
+        // No arguments provided - default to "create" (interactive mode)
+        modified_args.push("create".to_string());
+    } else if args.len() > 1 {
         let first_arg = &args[1];
 
         if first_arg != "verify"
@@ -67,6 +71,15 @@ fn main() -> Result<()> {
 }
 
 fn cmd_create(mut args: CreateArgs, config: &Config) -> Result<()> {
+    // If source is missing, run interactive mode
+    if args.source.is_none() {
+        if let Some(new_args) = interactive_create::run(config.clone())? {
+            args = new_args;
+        } else {
+            return Ok(()); // User cancelled
+        }
+    }
+
     // Apply profile if specified
     if let Some(profile_name) = &args.profile {
         if let Some(profile) = config.profiles.get(profile_name) {
@@ -206,7 +219,9 @@ fn cmd_create(mut args: CreateArgs, config: &Config) -> Result<()> {
     let threads = args.threads;
     let show_info_hash = args.info_hash;
     let use_json = args.json;
-    let source = args.source.clone();
+    
+    // Ensure source is present
+    let source = args.source.clone().ok_or_else(|| anyhow::anyhow!("No source selected"))?;
 
     // Determine output file path
     let output_path = if let Some(path) = args.output.clone() {
@@ -230,7 +245,7 @@ fn cmd_create(mut args: CreateArgs, config: &Config) -> Result<()> {
     let is_dry_run = options.dry_run;
 
     // Build the torrent
-    let mut builder = TorrentBuilder::new(source, options)
+    let mut builder = TorrentBuilder::new(source.clone(), options)
         .with_output_file(output_path.clone())
         .with_verbose(verbose)
         .with_progress(!use_json);

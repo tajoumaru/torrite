@@ -33,7 +33,7 @@ pub enum Commands {
 pub struct CreateArgs {
     /// The file or directory to create a torrent from
     #[arg(value_name = "TARGET")]
-    pub source: PathBuf,
+    pub source: Option<PathBuf>,
 
     /// Profile to use from configuration
     #[arg(short = 'P', long = "profile", value_name = "PROFILE")]
