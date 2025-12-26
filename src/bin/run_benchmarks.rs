@@ -270,6 +270,7 @@ fn main() {
             .arg(&cmd_prepare)
             .arg("--min-runs")
             .arg("3")
+            .arg("--show-output")
             .arg("--export-json")
             .arg(&json_output_path);
 
