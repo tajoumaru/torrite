@@ -48,7 +48,7 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          sudo apt-get update && sudo apt-get install -y build-essential git cmake libssl-dev libtbb-dev wget curl hyperfine libisal-dev nasm
+          sudo apt-get update && sudo apt-get install -y build-essential git cmake libssl-dev libtbb-dev wget curl hyperfine libisal-dev nasm libfuse2
 
       - name: Install mktorrent
         run: |
@@ -92,49 +92,27 @@ jobs:
           name: benchmark-results
           path: results.json
 
-  stop-runner:
-    name: Stop Hetzner Benchmark Runner
-    needs: [start-runner, benchmark]
-    runs-on: ubuntu-latest
-    if: always() # IMPORTANT: Ensures cleanup even if benchmark fails
-    steps:
-      - name: Delete Hetzner Runner
-        uses: Cyclenerd/hcloud-github-runner@v1
-        with:
-          mode: delete
-          hcloud_token: ${{ secrets.HCLOUD_TOKEN }}
-          github_token: ${{ secrets.GH_PAT }}
-          # We must pass the label and server_id generated in start-runner
-          name: ${{ needs.start-runner.outputs.label }}
-          server_id: ${{ needs.start-runner.outputs.server_id }}
-
   release:
     name: Release - ${{ matrix.platform.os-name }}
-    needs: [test, benchmark]
+    needs: [start-runner, benchmark]
+    runs-on: ${{ needs.start-runner.outputs.label }}
     strategy:
       matrix:
         platform:
           - os-name: Linux-x86_64
-            runs-on: ubuntu-24.04
             target: x86_64-unknown-linux-musl
 
           - os-name: Linux-aarch64
-            runs-on: ubuntu-24.04
             target: aarch64-unknown-linux-musl
 
           - os-name: Windows-x86_64
-            runs-on: windows-latest
             target: x86_64-pc-windows-msvc
 
           - os-name: macOS-x86_64
-            runs-on: macos-latest
             target: x86_64-apple-darwin
 
           - os-name: macOS-aarch64
-            runs-on: macos-latest
             target: aarch64-apple-darwin
-
-    runs-on: ${{ matrix.platform.runs-on }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -153,6 +131,22 @@ jobs:
           executable-name: torrite
           target: ${{ matrix.platform.target }}
           changes-file: CHANGELOG.md
+
+  stop-runner:
+    name: Stop Hetzner Benchmark Runner
+    needs: [start-runner, benchmark, release]
+    runs-on: ubuntu-latest
+    if: always() # IMPORTANT: Ensures cleanup even if benchmark or release fails
+    steps:
+      - name: Delete Hetzner Runner
+        uses: Cyclenerd/hcloud-github-runner@v1
+        with:
+          mode: delete
+          hcloud_token: ${{ secrets.HCLOUD_TOKEN }}
+          github_token: ${{ secrets.GH_PAT }}
+          # We must pass the label and server_id generated in start-runner
+          name: ${{ needs.start-runner.outputs.label }}
+          server_id: ${{ needs.start-runner.outputs.server_id }}
 
   publish-benchmarks:
     name: 📊 Publish Benchmark Results

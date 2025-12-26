@@ -36,7 +36,7 @@ fn main() -> std::io::Result<()> {
     }
     fs::create_dir_all(root)?;
 
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     // =========================================================
     // 1. The Monolith (Sequential Throughput Test)
@@ -62,15 +62,15 @@ fn main() -> std::io::Result<()> {
         let mut path = src_root.join(format!("module_{}", module_id));
 
         // Random nesting depth 2-5 levels
-        let depth = rng.gen_range(2..6);
+        let depth = rng.random_range(2..6);
         for d in 0..depth {
             path = path.join(format!("sub_pkg_{}", d));
         }
 
         // Create 20-50 files per module
-        let file_count = rng.gen_range(20..50);
+        let file_count = rng.random_range(20..50);
         for f in 0..file_count {
-            let size = rng.gen_range(500..20_000); // 500 bytes to 20KB
+            let size = rng.random_range(500..20_000); // 500 bytes to 20KB
             let ext = if f % 2 == 0 { "rs" } else { "json" };
             generate_file(
                 &path.join(format!("file_{}.{}", f, ext)),
@@ -91,13 +91,13 @@ fn main() -> std::io::Result<()> {
     for i in 0..500 {
         // Skew distribution: mostly small (images), some larger (raw/pdf)
         let size = if rng.gen_bool(0.8) {
-            rng.gen_range(100 * 1024..3 * 1024 * 1024) // 100KB - 3MB
+            rng.random_range(100 * 1024..3 * 1024 * 1024) // 100KB - 3MB
         } else {
-            rng.gen_range(5 * 1024 * 1024..15 * 1024 * 1024) // 5MB - 15MB
+            rng.random_range(5 * 1024 * 1024..15 * 1024 * 1024) // 5MB - 15MB
         };
 
         let ext_list = ["jpg", "png", "docx", "pdf"];
-        let ext = ext_list[rng.gen_range(0..ext_list.len())];
+        let ext = ext_list[rng.random_range(0..ext_list.len())];
 
         generate_file(&doc_root.join(format!("doc_{}.{}", i, ext)), size, i as u64)?;
     }
@@ -111,7 +111,7 @@ fn main() -> std::io::Result<()> {
     let asset_root = root.join("assets");
 
     for i in 0..20 {
-        let size = rng.gen_range(50 * 1024 * 1024..500 * 1024 * 1024); // 50MB - 500MB
+        let size = rng.random_range(50 * 1024 * 1024..500 * 1024 * 1024); // 50MB - 500MB
         generate_file(
             &asset_root.join(format!("raw_footage_{}.mp4", i)),
             size,
