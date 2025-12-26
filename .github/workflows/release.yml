@@ -60,16 +60,16 @@ jobs:
           sudo dpkg -i mkbrr_*_linux_amd64.deb
 
       - name: Install imdl
-        run: |
+        run: 
           curl --proto '=https' --tlsv1.2 -sSf https://imdl.io/install.sh | bash -s -- --to /usr/local/bin
 
       - name: Install torf-cli
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | sh
-          source $HOME/.local/bin/env
+          source root/.local/bin/env
           uv tool install torf-cli
           # Add uv tools to PATH for subsequent steps
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          echo "root/.local/bin" >> $GITHUB_PATH
 
       - name: Build and install torrenttools
         run: |
