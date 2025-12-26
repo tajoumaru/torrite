@@ -71,16 +71,11 @@ jobs:
           # Add uv tools to PATH for subsequent steps
           echo "/root/.local/bin" >> $GITHUB_PATH
 
-      - name: Build and install torrenttools
+      - name: Install torrenttools
         run: |
-          git clone https://github.com/fbdtemme/torrenttools.git /tmp/torrenttools
-          cd /tmp/torrenttools
-          # Fix bencode dependency branch name (master -> main)
-          sed -i 's/\(GIT_TAG[[:space:]]\+\)master/\1main/g' external/bencode.cmake
-          mkdir build && cd build
-          cmake -DCMAKE_BUILD_TYPE=Release -DDOTTORRENT_MB_CRYPTO_LIB=isal ..
-          cmake --build . --target torrenttools -j$(nproc)
-          sudo cmake --install . --component torrenttools
+          wget https://github.com/fbdtemme/torrenttools/releases/download/v0.6.2/torrenttools-0.6.2-linux-x86_64.AppImage -O torrenttools
+          chmod +x torrenttools
+          sudo mv torrenttools /usr/local/bin/torrenttools
 
       - name: Generate Benchmark Data
         run: cargo run --release --features dev --bin generate_bench_data
