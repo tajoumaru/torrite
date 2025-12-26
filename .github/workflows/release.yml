@@ -75,6 +75,8 @@ jobs:
         run: |
           git clone https://github.com/fbdtemme/torrenttools.git /tmp/torrenttools
           cd /tmp/torrenttools
+          # Fix bencode dependency branch name (master -> main)
+          sed -i 's/\(GIT_TAG[[:space:]]\+\)master/\1main/g' external/bencode.cmake
           mkdir build && cd build
           cmake -DCMAKE_BUILD_TYPE=Release -DDOTTORRENT_MB_CRYPTO_LIB=isal ..
           cmake --build . --target torrenttools -j$(nproc)
