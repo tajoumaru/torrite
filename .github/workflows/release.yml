@@ -12,9 +12,105 @@ jobs:
   test:
     uses: ./.github/workflows/test.yml
 
+  # Benchmark Jobs - Run after tests, before release
+  start-runner:
+    name: Start Hetzner Benchmark Runner
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      label: ${{ steps.create-runner.outputs.label }}
+      server_id: ${{ steps.create-runner.outputs.server_id }}
+    steps:
+      - name: Create Hetzner Runner
+        id: create-runner
+        uses: Cyclenerd/hcloud-github-runner@v1
+        with:
+          mode: create
+          # CCX33 = Dedicated 8 vCPUs & 32GB RAM
+          server_type: ccx33
+          location: nbg1
+          image: ubuntu-24.04
+          # Tokens
+          hcloud_token: ${{ secrets.HCLOUD_TOKEN }}
+          github_token: ${{ secrets.GH_PAT }}
+
+  benchmark:
+    name: Run Performance Benchmarks
+    needs: start-runner
+    runs-on: ${{ needs.start-runner.outputs.label }}
+    timeout-minutes: 55 # Failsafe to prevent infinite billing
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y build-essential git cmake libssl-dev libtbb-dev wget curl hyperfine libisal-dev
+
+      - name: Install mktorrent
+        run: |
+          sudo apt-get install -y mktorrent
+
+      - name: Install mkbrr
+        run: |
+          wget $(curl -s https://api.github.com/repos/autobrr/mkbrr/releases/latest | grep download | grep linux_amd64.deb | cut -d\" -f4)
+          sudo dpkg -i mkbrr_*_linux_amd64.deb
+
+      - name: Install imdl
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://imdl.io/install.sh | bash -s -- --to /usr/local/bin
+
+      - name: Install torf-cli
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          export PATH="$HOME/.local/bin:$PATH"
+          uv tool install torf-cli
+          # Add uv tools to PATH for subsequent steps
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Build and install torrenttools
+        run: |
+          git clone https://github.com/fbdtemme/torrenttools.git /tmp/torrenttools
+          cd /tmp/torrenttools
+          mkdir build && cd build
+          cmake -DCMAKE_BUILD_TYPE=Release -DDOTTORRENT_MB_CRYPTO_LIB=isal ..
+          cmake --build . --target torrenttools -j$(nproc)
+          sudo cmake --install . --component torrenttools
+
+      - name: Generate Benchmark Data
+        run: cargo run --release --features dev --bin generate_bench_data
+
+      - name: Run Benchmarks
+        run: cargo run --release --features dev --bin run_benchmarks --json > results.json
+
+      - name: Upload Benchmark Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: results.json
+
+  stop-runner:
+    name: Stop Hetzner Benchmark Runner
+    needs: [start-runner, benchmark]
+    runs-on: ubuntu-latest
+    if: always() # IMPORTANT: Ensures cleanup even if benchmark fails
+    steps:
+      - name: Delete Hetzner Runner
+        uses: Cyclenerd/hcloud-github-runner@v1
+        with:
+          mode: delete
+          hcloud_token: ${{ secrets.HCLOUD_TOKEN }}
+          github_token: ${{ secrets.GH_PAT }}
+          # We must pass the label and server_id generated in start-runner
+          name: ${{ needs.start-runner.outputs.label }}
+          server_id: ${{ needs.start-runner.outputs.server_id }}
+
   release:
     name: Release - ${{ matrix.platform.os-name }}
-    needs: test
+    needs: [test, benchmark]
     strategy:
       matrix:
         platform:
@@ -57,3 +153,108 @@ jobs:
           executable-name: torrite
           target: ${{ matrix.platform.target }}
           changes-file: CHANGELOG.md
+
+  publish-benchmarks:
+    name: 📊 Publish Benchmark Results
+    needs: [release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download Benchmark Results
+        uses: actions/download-artifact@v4
+        with:
+          name: benchmark-results
+
+      - name: Format Benchmark Table
+        id: format
+        run: |
+          # Create benchmark table header
+          echo "### 🚀 Performance Benchmarks" > bench_table.md
+          echo "" >> bench_table.md
+          echo "_Tested on Hetzner CCX33 (8 vCPUs, 32GB RAM)_" >> bench_table.md
+          echo "" >> bench_table.md
+
+          # Get number of scenarios
+          num_scenarios=$(jq '.tools[0].scenarios | length' results.json)
+
+          # Create table header row with scenarios
+          echo -n "| Tool |" >> bench_table.md
+          for i in $(seq 0 $((num_scenarios - 1))); do
+            scenario=$(jq -r ".tools[0].scenarios[$i].scenario" results.json)
+            echo -n " $scenario |" >> bench_table.md
+          done
+          echo " Average&nbsp;↑ |" >> bench_table.md
+
+          # Create separator row
+          echo -n "|---|" >> bench_table.md
+          for i in $(seq 0 $((num_scenarios - 1))); do
+            echo -n "---|" >> bench_table.md
+          done
+          echo "---:|" >> bench_table.md
+
+          # Create data rows (one per tool, sorted by average)
+          jq -r '.tools | sort_by(.average // 999999) | .[] | @json' results.json | while IFS= read -r tool; do
+            tool_name=$(echo "$tool" | jq -r '.name')
+            average=$(echo "$tool" | jq -r '.average // null')
+
+            # Check if this is a torrite variant (for bold formatting)
+            if echo "$tool_name" | grep -qi "torrite"; then
+              echo -n "| **$tool_name** |" >> bench_table.md
+            else
+              echo -n "| $tool_name |" >> bench_table.md
+            fi
+
+            # Add scenario times
+            for i in $(seq 0 $((num_scenarios - 1))); do
+              time=$(echo "$tool" | jq -r ".scenarios[$i].time // null")
+              error=$(echo "$tool" | jq -r ".scenarios[$i].error // null")
+
+              if [ "$time" != "null" ]; then
+                time_formatted=$(printf "%.3f" $time)s
+                if echo "$tool_name" | grep -qi "torrite"; then
+                  echo -n " **$time_formatted** |" >> bench_table.md
+                else
+                  echo -n " $time_formatted |" >> bench_table.md
+                fi
+              else
+                echo -n " ${error:-N/A} |" >> bench_table.md
+              fi
+            done
+
+            # Add average
+            if [ "$average" != "null" ]; then
+              avg_formatted=$(printf "%.3f" $average)s
+              if echo "$tool_name" | grep -qi "torrite"; then
+                echo " **$avg_formatted** |" >> bench_table.md
+              else
+                echo " $avg_formatted |" >> bench_table.md
+              fi
+            else
+              echo " N/A |" >> bench_table.md
+            fi
+          done
+          
+          echo "> *Benchmark performed on **Hetzner CCX33** instance*"
+
+          # Display the table for verification
+          cat bench_table.md
+
+      - name: Append to Release Body
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get the current tag that triggered the workflow
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+
+          # Fetch current release body
+          gh release view $TAG_NAME --json body -q .body > current_body.md
+
+          # Combine with benchmark table
+          echo "" >> current_body.md
+          echo "---" >> current_body.md
+          echo "" >> current_body.md
+          cat bench_table.md >> current_body.md
+
+          # Update the release
+          gh release edit $TAG_NAME --notes-file current_body.md

@@ -1,40 +1,29 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::path::Path;
-use std::process::{Command, exit};
+use std::process::{Command, Stdio, exit};
 
 // --- CONFIGURATION ---
 
-// 1. The name or path of YOUR Rust tool
 const TORRITE_BIN: &str = "target/release/torrite";
+const TORRITE_CMD: &str = "{BIN} {INPUT} -l 23 -o {OUTPUT}";
+const TORRITE_HYBRID_CMD: &str = "{BIN} {INPUT} -l 23 --hybrid -o {OUTPUT}";
+const TORRITE_V2_ONLY_CMD: &str = "{BIN} {INPUT} -l 23 --v2 -o {OUTPUT}";
 
-// 2. The name or path of the LEGACY tool (mktorrent)
-//    Ensure mktorrent is in your PATH or put the full path here.
 const MKTORRENT_BIN: &str = "mktorrent";
-
-// 3. Additional comparison tools
 const MKBRR_BIN: &str = "mkbrr";
 const TORRENTTOOLS_BIN: &str = "torrenttools";
 const IMDL_BIN: &str = "imdl";
-
-// 4. Command templates.
-//    {INPUT} will be replaced by the file/folder path.
-//    {OUTPUT} will be replaced by the output torrent path.
-//
-//    NOTE: We add a dummy announce URL because most tools require one.
-const TORRITE_CMD: &str = "{BIN} {INPUT} -a http://localhost/announce -l 21 -o {OUTPUT}";
-const TORRITE_HYBRID_CMD: &str =
-    "{BIN} {INPUT} -a http://localhost/announce -l 21 --hybrid -o {OUTPUT}";
-const TORRITE_V2_ONLY_CMD: &str =
-    "{BIN} {INPUT} -a http://localhost/announce -l 21 --v2 -o {OUTPUT}";
-const MKTORRENT_CMD: &str = "{BIN} -a http://localhost/announce -l 21 -o {OUTPUT} {INPUT}";
-const MKBRR_CMD: &str = "{BIN} create {INPUT} -t http://localhost/announce -l 21 -o {OUTPUT}";
-const TORRENTTOOLS_V1_CMD: &str = "{BIN} create -v 1 -a http://localhost/announce -l 21 -o {OUTPUT} {INPUT}";
-const TORRENTTOOLS_V2_CMD: &str = "{BIN} create -v 2 -a http://localhost/announce -l 21 -o {OUTPUT} {INPUT}";
-const TORRENTTOOLS_HYBRID_CMD: &str = "{BIN} create -v hybrid -a http://localhost/announce -l 21 -o {OUTPUT} {INPUT}";
-const IMDL_CMD: &str = "{BIN} torrent create -a http://localhost/announce -p 2mib -o {OUTPUT} {INPUT}";
+const TORF_BIN: &str = "torf";
+const MKTORRENT_CMD: &str = "{BIN} -l 23 -o {OUTPUT} {INPUT}";
+const MKBRR_CMD: &str = "{BIN} create {INPUT} -l 23 -o {OUTPUT}";
+const TORRENTTOOLS_V1_CMD: &str = "{BIN} create -v 1 -l 23 -o {OUTPUT} {INPUT}";
+const TORRENTTOOLS_V2_CMD: &str = "{BIN} create -v 2 -l 23 -o {OUTPUT} {INPUT}";
+const TORRENTTOOLS_HYBRID_CMD: &str = "{BIN} create -v hybrid -l 23 -o {OUTPUT} {INPUT}";
+const IMDL_CMD: &str = "{BIN} torrent create -p 8mib -o {OUTPUT} {INPUT}";
+const TORF_CMD: &str = "{BIN} {INPUT} -o {OUTPUT}";
 
 struct BenchmarkCase {
     name: &'static str,
@@ -52,6 +41,25 @@ struct HyperfineRun {
     mean: f64,
 }
 
+#[derive(Serialize, Debug)]
+struct BenchmarkResults {
+    tools: Vec<ToolResult>,
+}
+
+#[derive(Serialize, Debug)]
+struct ToolResult {
+    name: String,
+    scenarios: Vec<ScenarioResult>,
+    average: Option<f64>,
+}
+
+#[derive(Serialize, Debug)]
+struct ScenarioResult {
+    scenario: String,
+    time: Option<f64>,
+    error: Option<String>,
+}
+
 fn main() {
     // 1. Check dependencies
     check_binary_exists("hyperfine");
@@ -62,11 +70,13 @@ fn main() {
     let mkbrr = env::var("MKBRR").unwrap_or_else(|_| MKBRR_BIN.to_string());
     let torrenttools = env::var("TORRENTTOOLS").unwrap_or_else(|_| TORRENTTOOLS_BIN.to_string());
     let imdl = env::var("IMDL").unwrap_or_else(|_| IMDL_BIN.to_string());
+    let torf = env::var("TORF").unwrap_or_else(|_| TORF_BIN.to_string());
 
     // Check for debug flag
     let args: Vec<String> = env::args().collect();
     let debug_mode = args.contains(&"--debug".to_string());
     let only_torrite = args.contains(&"--only-torrite".to_string());
+    let json_output = args.contains(&"--json".to_string());
 
     check_binary_exists(&torrite);
     if !only_torrite {
@@ -74,22 +84,26 @@ fn main() {
         check_binary_exists(&mkbrr);
         check_binary_exists(&torrenttools);
         check_binary_exists(&imdl);
+        check_binary_exists(&torf);
     }
 
-    println!("---------------------------------------------------");
-    println!("🚀 Torrent Benchmark Runner");
-    println!("   Tools being compared:");
-    println!("     - torrite:      {} (V1, V2, Hybrid)", torrite);
-    if !only_torrite {
-        println!("     - mktorrent:    {} (V1 baseline)", mktorrent);
-        println!("     - mkbrr:        {} (V1)", mkbrr);
-        println!("     - imdl:         {} (V1)", imdl);
-        println!("     - torrenttools: {} (V1, V2, Hybrid)", torrenttools);
+    if !json_output {
+        println!("---------------------------------------------------");
+        println!("🚀 Torrent Benchmark Runner");
+        println!("   Tools being compared:");
+        println!("     - torrite:      {} (V1, V2, Hybrid)", torrite);
+        if !only_torrite {
+            println!("     - mktorrent:    {} (V1 baseline)", mktorrent);
+            println!("     - mkbrr:        {} (V1)", mkbrr);
+            println!("     - imdl:         {} (V1)", imdl);
+            println!("     - torf:         {} (V1)", torf);
+            println!("     - torrenttools: {} (V1, V2, Hybrid)", torrenttools);
+        }
+        if debug_mode {
+            println!("   Debug Mode: ON (Results will be kept)");
+        }
+        println!("---------------------------------------------------");
     }
-    if debug_mode {
-        println!("   Debug Mode: ON (Results will be kept)");
-    }
-    println!("---------------------------------------------------");
 
     let root = Path::new("benchmark_data");
     if !root.exists() {
@@ -146,6 +160,7 @@ fn main() {
         tool_names.insert(0, "mktorrent (V1)");
         tool_names.push("mkbrr (V1)");
         tool_names.push("imdl (V1)");
+        tool_names.push("torf (V1)");
         tool_names.push("torrenttools (V1)");
         tool_names.push("torrenttools (V2)");
         tool_names.push("torrenttools (Hybrid)");
@@ -161,10 +176,12 @@ fn main() {
         let input_path = root.join(case.path);
 
         if !input_path.exists() {
-            println!(
-                "⚠️ Skipping '{}': Path not found {:?}",
-                case.name, input_path
-            );
+            if !json_output {
+                println!(
+                    "⚠️ Skipping '{}': Path not found {:?}",
+                    case.name, input_path
+                );
+            }
             // Add "N/A" for missing scenarios to keep alignment
             for tool in &tool_names {
                 let na_str = if tool.contains("torrite") {
@@ -172,15 +189,14 @@ fn main() {
                 } else {
                     "N/A".to_string()
                 };
-                aggregated_results
-                    .get_mut(*tool)
-                    .unwrap()
-                    .push(na_str);
+                aggregated_results.get_mut(*tool).unwrap().push(na_str);
             }
             continue;
         }
 
-        println!("\n▶️  Running Scenario: {}", case.name);
+        if !json_output {
+            println!("\n▶️  Running Scenario: {}", case.name);
+        }
 
         // Construct Output Paths (unique per scenario to allow verification)
         let safe_name = sanitize_filename(case.name);
@@ -190,9 +206,13 @@ fn main() {
         let out_mktorrent = results_dir.join(format!("{}_mktorrent.torrent", safe_name));
         let out_mkbrr = results_dir.join(format!("{}_mkbrr.torrent", safe_name));
         let out_imdl = results_dir.join(format!("{}_imdl.torrent", safe_name));
-        let out_torrenttools_v1 = results_dir.join(format!("{}_torrenttools_v1.torrent", safe_name));
-        let out_torrenttools_v2 = results_dir.join(format!("{}_torrenttools_v2.torrent", safe_name));
-        let out_torrenttools_hybrid = results_dir.join(format!("{}_torrenttools_hybrid.torrent", safe_name));
+        let out_torf = results_dir.join(format!("{}_torf.torrent", safe_name));
+        let out_torrenttools_v1 =
+            results_dir.join(format!("{}_torrenttools_v1.torrent", safe_name));
+        let out_torrenttools_v2 =
+            results_dir.join(format!("{}_torrenttools_v2.torrent", safe_name));
+        let out_torrenttools_hybrid =
+            results_dir.join(format!("{}_torrenttools_hybrid.torrent", safe_name));
 
         // Format Commands
         let cmd_torrite = format_command(TORRITE_CMD, &torrite, &input_path, &out_torrite);
@@ -207,20 +227,37 @@ fn main() {
         let cmd_mktorrent = format_command(MKTORRENT_CMD, &mktorrent, &input_path, &out_mktorrent);
         let cmd_mkbrr = format_command(MKBRR_CMD, &mkbrr, &input_path, &out_mkbrr);
         let cmd_imdl = format_command(IMDL_CMD, &imdl, &input_path, &out_imdl);
-        let cmd_torrenttools_v1 = format_command(TORRENTTOOLS_V1_CMD, &torrenttools, &input_path, &out_torrenttools_v1);
-        let cmd_torrenttools_v2 = format_command(TORRENTTOOLS_V2_CMD, &torrenttools, &input_path, &out_torrenttools_v2);
-        let cmd_torrenttools_hybrid = format_command(TORRENTTOOLS_HYBRID_CMD, &torrenttools, &input_path, &out_torrenttools_hybrid);
+        let cmd_torf = format_command(TORF_CMD, &torf, &input_path, &out_torf);
+        let cmd_torrenttools_v1 = format_command(
+            TORRENTTOOLS_V1_CMD,
+            &torrenttools,
+            &input_path,
+            &out_torrenttools_v1,
+        );
+        let cmd_torrenttools_v2 = format_command(
+            TORRENTTOOLS_V2_CMD,
+            &torrenttools,
+            &input_path,
+            &out_torrenttools_v2,
+        );
+        let cmd_torrenttools_hybrid = format_command(
+            TORRENTTOOLS_HYBRID_CMD,
+            &torrenttools,
+            &input_path,
+            &out_torrenttools_hybrid,
+        );
 
         let json_output_path = results_dir.join(format!("result_{}.json", safe_name));
 
         let cmd_prepare = format!(
-            "rm -f {} {} {} {} {} {} {} {} {}",
+            "rm -f {} {} {} {} {} {} {} {} {} {}",
             out_torrite.display(),
             out_torrite_hybrid.display(),
             out_torrite_v2.display(),
             out_mktorrent.display(),
             out_mkbrr.display(),
             out_imdl.display(),
+            out_torf.display(),
             out_torrenttools_v1.display(),
             out_torrenttools_v2.display(),
             out_torrenttools_hybrid.display()
@@ -235,11 +272,19 @@ fn main() {
             .arg("3")
             .arg("--export-json")
             .arg(&json_output_path);
-        
-        if !only_torrite {
-            hyperfine_cmd.arg("-n").arg("mktorrent (V1)").arg(&cmd_mktorrent);
+
+        // Suppress hyperfine's progress output in JSON mode
+        if json_output {
+            hyperfine_cmd.stdout(Stdio::null()).stderr(Stdio::null());
         }
-            
+
+        if !only_torrite {
+            hyperfine_cmd
+                .arg("-n")
+                .arg("mktorrent (V1)")
+                .arg(&cmd_mktorrent);
+        }
+
         hyperfine_cmd
             .arg("-n")
             .arg("**torrite (V1)**")
@@ -254,9 +299,19 @@ fn main() {
         if !only_torrite {
             hyperfine_cmd.arg("-n").arg("mkbrr (V1)").arg(&cmd_mkbrr);
             hyperfine_cmd.arg("-n").arg("imdl (V1)").arg(&cmd_imdl);
-            hyperfine_cmd.arg("-n").arg("torrenttools (V1)").arg(&cmd_torrenttools_v1);
-            hyperfine_cmd.arg("-n").arg("torrenttools (V2)").arg(&cmd_torrenttools_v2);
-            hyperfine_cmd.arg("-n").arg("torrenttools (Hybrid)").arg(&cmd_torrenttools_hybrid);
+            hyperfine_cmd.arg("-n").arg("torf (V1)").arg(&cmd_torf);
+            hyperfine_cmd
+                .arg("-n")
+                .arg("torrenttools (V1)")
+                .arg(&cmd_torrenttools_v1);
+            hyperfine_cmd
+                .arg("-n")
+                .arg("torrenttools (V2)")
+                .arg(&cmd_torrenttools_v2);
+            hyperfine_cmd
+                .arg("-n")
+                .arg("torrenttools (Hybrid)")
+                .arg(&cmd_torrenttools_hybrid);
         }
 
         let status = hyperfine_cmd.status().expect("Failed to run hyperfine");
@@ -269,10 +324,7 @@ fn main() {
                 } else {
                     "Err".to_string()
                 };
-                aggregated_results
-                    .get_mut(*tool)
-                    .unwrap()
-                    .push(err_str);
+                aggregated_results.get_mut(*tool).unwrap().push(err_str);
             }
         } else {
             // Read JSON results
@@ -295,23 +347,16 @@ fn main() {
                     } else {
                         format!("{:.3}s", mean)
                     };
-                    aggregated_results
-                        .get_mut(*tool)
-                        .unwrap()
-                        .push(time_str);
+                    aggregated_results.get_mut(*tool).unwrap().push(time_str);
                 } else {
                     let missing_str = if tool.contains("torrite") {
                         "**Missing**".to_string()
                     } else {
                         "Missing".to_string()
                     };
-                    aggregated_results
-                        .get_mut(*tool)
-                        .unwrap()
-                        .push(missing_str);
+                    aggregated_results.get_mut(*tool).unwrap().push(missing_str);
                 }
             }
-
         }
     }
 
@@ -324,7 +369,11 @@ fn main() {
 
             for time_str in times {
                 // Parse time from strings like "0.123s" or "**0.456s**"
-                let cleaned = time_str.replace("*", "").replace("s", "").trim().to_string();
+                let cleaned = time_str
+                    .replace("*", "")
+                    .replace("s", "")
+                    .trim()
+                    .to_string();
                 if let Ok(time) = cleaned.parse::<f64>() {
                     valid_times.push(time);
                 }
@@ -357,48 +406,111 @@ fn main() {
     // Sort by average time (ascending)
     tool_averages.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
 
-    // --- Generate Markdown Table ---
-    println!("\n📊 Benchmark Summary\n");
+    if json_output {
+        // --- Generate JSON Output ---
+        let mut json_results = BenchmarkResults {
+            tools: Vec::new(),
+        };
 
-    // Header
-    print!("| Tool |");
-    for case in &scenarios {
-        print!(" {} |", case.name);
-    }
-    println!(" Average |");
+        for (tool, avg, _avg_str) in &tool_averages {
+            let mut scenario_results = Vec::new();
 
-    // Separator
-    print!("|---|");
-    for _ in &scenarios {
-        print!("---|");
-    }
-    println!("---|");
+            if let Some(times) = aggregated_results.get(tool.as_str()) {
+                for (i, time_str) in times.iter().enumerate() {
+                    let scenario_name = scenarios[i].name;
 
-    // Rows (sorted by average)
-    for (tool, _avg, avg_str) in &tool_averages {
-        print!("| {} |", tool);
-        if let Some(times) = aggregated_results.get(tool.as_str()) {
-            for time in times {
-                print!(" {} |", time);
+                    // Parse time from strings like "0.123s" or "**0.456s**"
+                    let cleaned = time_str
+                        .replace("*", "")
+                        .replace("s", "")
+                        .trim()
+                        .to_string();
+
+                    let (time, error) = if let Ok(time) = cleaned.parse::<f64>() {
+                        (Some(time), None)
+                    } else if time_str.contains("N/A") {
+                        (None, Some("N/A".to_string()))
+                    } else if time_str.contains("Err") {
+                        (None, Some("Error".to_string()))
+                    } else if time_str.contains("Missing") {
+                        (None, Some("Missing".to_string()))
+                    } else {
+                        (None, Some(time_str.clone()))
+                    };
+
+                    scenario_results.push(ScenarioResult {
+                        scenario: scenario_name.to_string(),
+                        time,
+                        error,
+                    });
+                }
             }
+
+            let average = if *avg == f64::MAX {
+                None
+            } else {
+                Some(*avg)
+            };
+
+            // Remove markdown bold markers from tool name
+            let clean_tool_name = tool.replace("*", "");
+
+            json_results.tools.push(ToolResult {
+                name: clean_tool_name,
+                scenarios: scenario_results,
+                average,
+            });
         }
-        print!(" {} |", avg_str);
+
+        let json_string = serde_json::to_string_pretty(&json_results)
+            .expect("Failed to serialize benchmark results to JSON");
+        println!("{}", json_string);
+    } else {
+        // --- Generate Markdown Table ---
+        println!("\n📊 Benchmark Summary\n");
+
+        // Header
+        print!("| Tool |");
+        for case in &scenarios {
+            print!(" {} |", case.name);
+        }
+        println!(" Average |");
+
+        // Separator
+        print!("|---|");
+        for _ in &scenarios {
+            print!("---|");
+        }
+        println!("---|");
+
+        // Rows (sorted by average)
+        for (tool, _avg, avg_str) in &tool_averages {
+            print!("| {} |", tool);
+            if let Some(times) = aggregated_results.get(tool.as_str()) {
+                for time in times {
+                    print!(" {} |", time);
+                }
+            }
+            print!(" {} |", avg_str);
+            println!();
+        }
         println!();
     }
-    println!();
 
     // Cleanup
     if !debug_mode {
         if let Err(e) = fs::remove_dir_all(results_dir) {
             eprintln!("⚠️ Warning: Failed to clean up results directory: {}", e);
-        } else {
+        } else if !json_output {
             println!("🧹 Cleaned up benchmark results.");
         }
-    } else {
+    } else if !json_output {
         println!("📝 Results kept in '{}'", results_dir.display());
     }
 
-    println!("\n✅ Benchmarks Complete.");
+    if !json_output {
+        println!("\n✅ Benchmarks Complete.");
+    }
 }
 
 // Helper to check if a binary is runnable
