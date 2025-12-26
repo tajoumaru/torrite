@@ -273,9 +273,9 @@ fn main() {
             .arg("--export-json")
             .arg(&json_output_path);
 
-        // Suppress hyperfine's progress output in JSON mode
+        // Suppress hyperfine's progress output in JSON mode (but keep stderr for errors)
         if json_output {
-            hyperfine_cmd.stdout(Stdio::null()).stderr(Stdio::null());
+            hyperfine_cmd.stdout(Stdio::null());
         }
 
         if !only_torrite {
