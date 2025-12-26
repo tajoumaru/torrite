@@ -81,7 +81,7 @@ jobs:
         run: cargo run --release --features dev --bin generate_bench_data
 
       - name: Run Benchmarks
-        run: cargo run --release --features dev --bin run_benchmarks --json > results.json
+        run: cargo run --release --features dev --bin run_benchmarks -- --json > results.json
 
       - name: Upload Benchmark Results
         uses: actions/upload-artifact@v4
