@@ -90,7 +90,7 @@ fn main() -> std::io::Result<()> {
 
     for i in 0..500 {
         // Skew distribution: mostly small (images), some larger (raw/pdf)
-        let size = if rng.gen_bool(0.8) {
+        let size = if rng.random_bool(0.8) {
             rng.random_range(100 * 1024..3 * 1024 * 1024) // 100KB - 3MB
         } else {
             rng.random_range(5 * 1024 * 1024..15 * 1024 * 1024) // 5MB - 15MB
