@@ -66,10 +66,10 @@ jobs:
       - name: Install torf-cli
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | sh
-          source root/.local/bin/env
+          source /root/.local/bin/env
           uv tool install torf-cli
           # Add uv tools to PATH for subsequent steps
-          echo "root/.local/bin" >> $GITHUB_PATH
+          echo "/root/.local/bin" >> $GITHUB_PATH
 
       - name: Build and install torrenttools
         run: |
